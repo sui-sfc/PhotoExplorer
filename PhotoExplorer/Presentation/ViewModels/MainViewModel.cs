@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using PhotoExplorer.Application;
 using PhotoExplorer.Domain.Entities;
 using PhotoExplorer.Domain.Enums;
+using PhotoExplorer.Infrastructure;
 using WpfApplication = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
@@ -40,6 +43,7 @@ public sealed class MainViewModel : ViewModelBase
         BrowseOutputCommand = new RelayCommand(BrowseOutput);
         BrowseTrashCommand = new RelayCommand(BrowseTrash);
         ClearLogCommand = new RelayCommand(ClearLog, () => LogEntries.Count > 0);
+        OpenMappingsCommand = new RelayCommand(OpenMappingsFile);
     }
 
     // ----- Settings Properties -----
@@ -141,6 +145,9 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand BrowseOutputCommand { get; }
     public RelayCommand BrowseTrashCommand { get; }
     public RelayCommand ClearLogCommand { get; }
+    public RelayCommand OpenMappingsCommand { get; }
+
+    public string MappingsFilePath => MappingConfig.DefaultPath;
 
     // ----- Methods -----
 
@@ -244,6 +251,23 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     private void ClearLog() => LogEntries.Clear();
+
+    private void OpenMappingsFile()
+    {
+        var path = MappingConfig.DefaultPath;
+        // ファイルがなければデフォルトを生成
+        if (!File.Exists(path))
+        {
+            MappingConfig.CreateDefault().Save(path);
+        }
+        // メモ帳で開く
+        Process.Start(new ProcessStartInfo("notepad.exe", $"\"{path}\"") { UseShellExecute = true });
+        MessageBox.Show(
+            $"マッピングファイルをメモ帳で開きました。\n\n" +
+            $"保存後、次回の実行から反映されます。\n\n" +
+            $"場所: {path}",
+            "マッピング設定", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
 
     private static string? BrowseFolder(string description)
     {

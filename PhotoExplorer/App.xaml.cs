@@ -64,17 +64,33 @@ public partial class App : WpfApplication
         if (!File.Exists(exifToolPath))
             exifToolPath = "exiftool.exe"; // PATH から探す
 
-        var dbPath = Path.Combine(
+        var appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PhotoExplorer", "photo_explorer.db");
-        Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+            "PhotoExplorer");
+        Directory.CreateDirectory(appDataDir);
+
+        var dbPath = Path.Combine(appDataDir, "photo_explorer.db");
+
+        // カスタムマッピング設定を読み込む（なければデフォルトを生成）
+        var mappingsPath = MappingConfig.DefaultPath;
+        MappingConfig mappingConfig;
+        if (File.Exists(mappingsPath))
+        {
+            mappingConfig = MappingConfig.Load(mappingsPath);
+        }
+        else
+        {
+            mappingConfig = MappingConfig.CreateDefault();
+            mappingConfig.Save(mappingsPath);
+        }
 
         // Infrastructure
         services.AddSingleton<IFileScanner, FileScanner>();
         services.AddSingleton<IMetadataExtractor>(_ => new ExifToolMetadataExtractor(exifToolPath));
         services.AddSingleton<IFileOperator, FileOperator>();
         services.AddSingleton<IAssetRepository>(_ => new SqliteAssetRepository(dbPath));
-        services.AddSingleton<INormalizer, Normalizer>();
+        services.AddSingleton(mappingConfig);
+        services.AddSingleton<INormalizer>(sp => new Normalizer(sp.GetRequiredService<MappingConfig>()));
         services.AddSingleton<IPathResolver, PathResolver>();
         services.AddSingleton<IDuplicateDetector, DuplicateDetector>();
 

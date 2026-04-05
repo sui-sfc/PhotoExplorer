@@ -154,6 +154,11 @@
                             Command="{Binding StopCommand}"
                             Background="#E74C3C" Foreground="White"
                             Margin="0,6,8,0"/>
+                    <Button Style="{StaticResource ActionButton}"
+                            Content="名前設定..."
+                            Command="{Binding OpenMappingsCommand}"
+                            ToolTip="カメラ・レンズの表示名マッピングをメモ帳で編集"
+                            Margin="0,6,8,0"/>
                 </StackPanel>
             </Grid>
         </Border>
