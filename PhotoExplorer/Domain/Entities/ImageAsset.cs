@@ -1,3 +1,4 @@
+using System.IO;
 using PhotoExplorer.Domain.Enums;
 using PhotoExplorer.Domain.ValueObjects;
 

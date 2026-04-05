@@ -1,3 +1,4 @@
+using System.IO;
 using PhotoExplorer.Domain.Entities;
 using PhotoExplorer.Domain.Services;
 

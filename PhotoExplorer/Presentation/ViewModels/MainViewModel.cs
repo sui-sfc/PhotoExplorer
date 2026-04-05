@@ -4,6 +4,9 @@ using PhotoExplorer.Application;
 using PhotoExplorer.Domain.Entities;
 using PhotoExplorer.Domain.Enums;
 using WpfApplication = System.Windows.Application;
+using MessageBox = System.Windows.MessageBox;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
 
 namespace PhotoExplorer.Presentation.ViewModels;
 

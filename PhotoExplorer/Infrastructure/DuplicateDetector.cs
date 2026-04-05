@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using PhotoExplorer.Domain.Entities;
 using PhotoExplorer.Domain.Enums;

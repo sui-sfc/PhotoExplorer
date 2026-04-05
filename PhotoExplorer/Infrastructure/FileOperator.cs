@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace PhotoExplorer.Infrastructure;
 
 /// <summary>実際のファイル操作を行う実装（上書き禁止・衝突時リネーム）</summary>
