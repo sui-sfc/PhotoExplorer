@@ -2,6 +2,10 @@ using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
 using PhotoExplorer.Domain.Enums;
+// UseWindowsForms により System.Drawing.Brush と競合するため明示的にエイリアスを定義
+using Brush = System.Windows.Media.Brush;
+using Brushes = System.Windows.Media.Brushes;
+using Color = System.Windows.Media.Color;
 
 namespace PhotoExplorer.Presentation.Converters;
 

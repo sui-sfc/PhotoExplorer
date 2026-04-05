@@ -3,6 +3,7 @@ using System.Windows;
 using PhotoExplorer.Application;
 using PhotoExplorer.Domain.Entities;
 using PhotoExplorer.Domain.Enums;
+using WpfApplication = System.Windows.Application;
 
 namespace PhotoExplorer.Presentation.ViewModels;
 
@@ -173,7 +174,7 @@ public sealed class MainViewModel : ViewModelBase
 
         var progress = new Progress<OrganizeProgress>(p =>
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            WpfApplication.Current.Dispatcher.Invoke(() =>
             {
                 ProgressTotal = p.Total;
                 ProgressValue = p.Processed;

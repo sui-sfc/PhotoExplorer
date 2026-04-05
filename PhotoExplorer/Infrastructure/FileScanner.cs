@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace PhotoExplorer.Infrastructure;
 
 /// <summary>対応拡張子のファイルを再帰スキャンする実装</summary>

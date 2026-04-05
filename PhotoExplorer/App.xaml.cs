@@ -5,14 +5,16 @@ using PhotoExplorer.Domain.Services;
 using PhotoExplorer.Infrastructure;
 using PhotoExplorer.Presentation.ViewModels;
 using PhotoExplorer.Presentation.Views;
+// PhotoExplorer.Application 名前空間と System.Windows.Application クラスの衝突を回避
+using WpfApplication = System.Windows.Application;
 
 namespace PhotoExplorer;
 
-public partial class App : Application
+public partial class App : WpfApplication
 {
     private IServiceProvider? _serviceProvider;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
 
@@ -54,7 +56,7 @@ public partial class App : Application
         services.AddTransient<MainWindow>();
     }
 
-    protected override void OnExit(ExitEventArgs e)
+    protected override void OnExit(System.Windows.ExitEventArgs e)
     {
         if (_serviceProvider is IDisposable d) d.Dispose();
         base.OnExit(e);
