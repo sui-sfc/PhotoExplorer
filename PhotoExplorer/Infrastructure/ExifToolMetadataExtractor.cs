@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PhotoExplorer.Domain.ValueObjects;
 
@@ -11,6 +10,7 @@ namespace PhotoExplorer.Infrastructure;
 public sealed class ExifToolMetadataExtractor : IMetadataExtractor
 {
     private readonly string _exifToolPath;
+    private bool? _isAvailable;
 
     // exiftool の日時フォーマット
     private static readonly string[] DateFormats =
@@ -26,11 +26,70 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         _exifToolPath = exifToolPath;
     }
 
+    /// <summary>exiftoolが実行可能か確認する</summary>
+    public bool IsAvailable()
+    {
+        if (_isAvailable.HasValue) return _isAvailable.Value;
+        try
+        {
+            using var p = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = _exifToolPath,
+                    Arguments = "-ver",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true,
+                }
+            };
+            p.Start();
+            var ver = p.StandardOutput.ReadToEnd();
+            p.WaitForExit();
+            _isAvailable = !string.IsNullOrWhiteSpace(ver);
+        }
+        catch
+        {
+            _isAvailable = false;
+        }
+        return _isAvailable.Value;
+    }
+
+    /// <summary>exiftoolのバージョン文字列を返す（利用不可なら null）</summary>
+    public string? GetVersion()
+    {
+        try
+        {
+            using var p = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = _exifToolPath,
+                    Arguments = "-ver",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true,
+                }
+            };
+            p.Start();
+            var ver = p.StandardOutput.ReadToEnd().Trim();
+            p.WaitForExit();
+            return string.IsNullOrWhiteSpace(ver) ? null : ver;
+        }
+        catch { return null; }
+    }
+
     public async Task<ExifData?> ExtractAsync(
         string filePath,
         CancellationToken cancellationToken = default)
     {
-        var args = $"-json -DateTimeOriginal -CreateDate -ModifyDate -Make -Model -LensModel -FocalLength -Aperture -ShutterSpeed -ISO \"{filePath}\"";
+        // -n: 数値出力  -charset UTF8: 文字化け防止
+        // -LensModel と -LensID の両方を試す（メーカーによって異なるタグを使用）
+        var args = $"-json -n -charset UTF8 " +
+                   $"-DateTimeOriginal -CreateDate -ModifyDate " +
+                   $"-Make -Model -LensModel -LensID -Lens " +
+                   $"-FocalLength -Aperture -ShutterSpeed -ISO " +
+                   $"\"{filePath}\"";
 
         using var process = new Process
         {
@@ -68,6 +127,11 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
                 : modifyDate.HasValue ? "ModifyDate"
                 : null;
 
+            // LensModel → LensID → Lens の優先順位でレンズ名を取得
+            var lensModel = obj["LensModel"]?.ToString()
+                         ?? obj["LensID"]?.ToString()
+                         ?? obj["Lens"]?.ToString();
+
             return new ExifData
             {
                 DateTimeOriginal = dateOriginal,
@@ -75,7 +139,7 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
                 ModifyDate = modifyDate,
                 Make = obj["Make"]?.ToString(),
                 Model = obj["Model"]?.ToString(),
-                LensModel = obj["LensModel"]?.ToString(),
+                LensModel = lensModel,
                 FocalLength = obj["FocalLength"]?.ToString(),
                 Aperture = obj["Aperture"]?.ToString(),
                 ShutterSpeed = obj["ShutterSpeed"]?.ToString(),

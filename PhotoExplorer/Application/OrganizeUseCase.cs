@@ -41,12 +41,28 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
         var log = new List<string>();
         void Log(string msg) { log.Add($"[{DateTime.Now:HH:mm:ss}] {msg}"); }
 
+        // ----- exiftool 可用性チェック -----
+        if (_metadataExtractor is ExifToolMetadataExtractor et)
+        {
+            var ver = et.GetVersion();
+            if (ver == null)
+                Log($"⚠ exiftool が見つかりません（パス: {settings.ExifToolPath}）。カメラ/レンズ名は不明になります。");
+            else
+                Log($"exiftool v{ver} を使用します。");
+        }
+
         // ----- Step 1: Scan -----
         Log("スキャン開始...");
         progress?.Report(new(0, 0, "", "ファイルスキャン中..."));
 
         var files = await _scanner.ScanAsync(settings.InputDirectory, cancellationToken);
         Log($"スキャン完了: {files.Count} ファイル検出");
+
+        if (files.Count == 0)
+        {
+            Log("対象ファイルが見つかりませんでした。");
+            return new OrganizeResult { Log = log };
+        }
 
         var assets = files.Select(f => new ImageAsset
         {
@@ -89,7 +105,26 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
             }
         });
         await Task.WhenAll(tasks);
-        Log($"メタデータ抽出完了");
+
+        // EXIF 診断サマリー
+        int withExif   = assets.Count(a => a.Exif != null);
+        int withCamera = assets.Count(a => !string.IsNullOrWhiteSpace(a.Exif?.CameraName));
+        int withLens   = assets.Count(a => !string.IsNullOrWhiteSpace(a.Exif?.LensModel));
+        int noExif     = assets.Count - withExif;
+        Log($"メタデータ抽出完了: EXIF取得={withExif} / カメラ名取得={withCamera} / レンズ名取得={withLens} / EXIF無し={noExif}");
+
+        if (noExif > 0 && withExif == 0)
+            Log("⚠ EXIF が1件も取得できませんでした。exiftool が正しく動作しているか確認してください。");
+
+        // 先頭5件の EXIF 内容をログ出力（診断用）
+        foreach (var asset in assets.Take(5))
+        {
+            var exif = asset.Exif;
+            if (exif == null)
+                Log($"  [診断] {asset.FileName}: EXIF=null");
+            else
+                Log($"  [診断] {asset.FileName}: Make={exif.Make ?? "(null)"} / Model={exif.Model ?? "(null)"} / Lens={exif.LensModel ?? "(null)"} / Date={exif.EffectiveDate?.ToString("yyyy-MM-dd") ?? "(null)"}");
+        }
 
         // ----- Step 3: Normalize -----
         Log("名称正規化中...");
@@ -121,7 +156,7 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
         {
             Log("DRY_RUN モード: 実際のファイル操作はスキップ");
             foreach (var asset in assets.Where(a => a.Status != AssetStatus.Duplicate && a.Status != AssetStatus.Error))
-                Log($"  [{settings.Mode}] {asset.SourcePath} => {asset.OutputPath}");
+                Log($"  [DRY_RUN] {asset.FileName} => {asset.OutputPath}");
         }
         else
         {
@@ -134,7 +169,6 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
 
                 if (asset.Status == AssetStatus.Duplicate && !asset.IsKeptInDuplicateGroup)
                 {
-                    // 重複ファイルをゴミ箱へ
                     if (!string.IsNullOrWhiteSpace(settings.TrashDirectory))
                     {
                         try
