@@ -19,12 +19,38 @@ public partial class App : WpfApplication
     {
         base.OnStartup(e);
 
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        _serviceProvider = services.BuildServiceProvider();
+        // 未処理例外をすべてキャッチしてダイアログ表示
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            ShowFatal(args.ExceptionObject?.ToString() ?? "不明なエラー");
+        DispatcherUnhandledException += (_, args) =>
+        {
+            ShowFatal(args.Exception.ToString());
+            args.Handled = true;
+        };
 
-        var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
-        mainWindow.Show();
+        try
+        {
+            var services = new ServiceCollection();
+            ConfigureServices(services);
+            _serviceProvider = services.BuildServiceProvider();
+
+            var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+            mainWindow.Show();
+        }
+        catch (Exception ex)
+        {
+            ShowFatal(ex.ToString());
+            Shutdown(1);
+        }
+    }
+
+    private static void ShowFatal(string message)
+    {
+        MessageBox.Show(
+            $"起動に失敗しました。\n\n{message}",
+            "PhotoExplorer - 起動エラー",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error);
     }
 
     private static void ConfigureServices(IServiceCollection services)
