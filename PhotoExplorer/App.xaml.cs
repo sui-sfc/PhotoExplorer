@@ -8,6 +8,9 @@ using PhotoExplorer.Presentation.ViewModels;
 using PhotoExplorer.Presentation.Views;
 // PhotoExplorer.Application 名前空間と System.Windows.Application クラスの衝突を回避
 using WpfApplication = System.Windows.Application;
+using MessageBox = System.Windows.MessageBox;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
 
 namespace PhotoExplorer;
 
