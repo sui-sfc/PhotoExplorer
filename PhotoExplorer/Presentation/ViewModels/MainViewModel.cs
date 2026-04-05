@@ -16,14 +16,15 @@ namespace PhotoExplorer.Presentation.ViewModels;
 public sealed class MainViewModel : ViewModelBase
 {
     private readonly IOrganizeUseCase _useCase;
+    private readonly UserPreferences _prefs;
 
     // ----- Settings -----
-    private string _inputDirectory = string.Empty;
-    private string _outputDirectory = string.Empty;
-    private string _trashDirectory = string.Empty;
-    private string _folderTemplate = "{yyyy}/{mm}/{dd}/{camera}";
-    private OperationMode _operationMode = OperationMode.DryRun;
-    private int _maxParallelism = 4;
+    private string _inputDirectory;
+    private string _outputDirectory;
+    private string _trashDirectory;
+    private string _folderTemplate;
+    private OperationMode _operationMode;
+    private int _maxParallelism;
 
     // ----- State -----
     private bool _isRunning;
@@ -36,6 +37,15 @@ public sealed class MainViewModel : ViewModelBase
     public MainViewModel(IOrganizeUseCase useCase)
     {
         _useCase = useCase;
+
+        // 前回の設定を復元
+        _prefs = UserPreferences.Load();
+        _inputDirectory  = _prefs.InputDirectory;
+        _outputDirectory = _prefs.OutputDirectory;
+        _trashDirectory  = _prefs.TrashDirectory;
+        _folderTemplate  = _prefs.FolderTemplate;
+        _operationMode   = _prefs.Mode;
+        _maxParallelism  = _prefs.MaxParallelism;
 
         StartCommand = new AsyncRelayCommand(StartAsync, () => !IsRunning && !string.IsNullOrWhiteSpace(InputDirectory));
         StopCommand = new RelayCommand(Stop, () => IsRunning);
@@ -51,31 +61,31 @@ public sealed class MainViewModel : ViewModelBase
     public string InputDirectory
     {
         get => _inputDirectory;
-        set { SetField(ref _inputDirectory, value); }
+        set { if (SetField(ref _inputDirectory, value)) SavePrefs(); }
     }
 
     public string OutputDirectory
     {
         get => _outputDirectory;
-        set => SetField(ref _outputDirectory, value);
+        set { if (SetField(ref _outputDirectory, value)) SavePrefs(); }
     }
 
     public string TrashDirectory
     {
         get => _trashDirectory;
-        set => SetField(ref _trashDirectory, value);
+        set { if (SetField(ref _trashDirectory, value)) SavePrefs(); }
     }
 
     public string FolderTemplate
     {
         get => _folderTemplate;
-        set => SetField(ref _folderTemplate, value);
+        set { if (SetField(ref _folderTemplate, value)) SavePrefs(); }
     }
 
     public OperationMode OperationMode
     {
         get => _operationMode;
-        set => SetField(ref _operationMode, value);
+        set { if (SetField(ref _operationMode, value)) SavePrefs(); }
     }
 
     public IEnumerable<OperationMode> OperationModes => Enum.GetValues<OperationMode>();
@@ -83,7 +93,7 @@ public sealed class MainViewModel : ViewModelBase
     public int MaxParallelism
     {
         get => _maxParallelism;
-        set => SetField(ref _maxParallelism, Math.Clamp(value, 1, 16));
+        set { if (SetField(ref _maxParallelism, Math.Clamp(value, 1, 16))) SavePrefs(); }
     }
 
     // ----- State Properties -----
@@ -251,6 +261,17 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     private void ClearLog() => LogEntries.Clear();
+
+    private void SavePrefs()
+    {
+        _prefs.InputDirectory  = _inputDirectory;
+        _prefs.OutputDirectory = _outputDirectory;
+        _prefs.TrashDirectory  = _trashDirectory;
+        _prefs.FolderTemplate  = _folderTemplate;
+        _prefs.Mode            = _operationMode;
+        _prefs.MaxParallelism  = _maxParallelism;
+        _prefs.Save();
+    }
 
     private void OpenMappingsFile()
     {
