@@ -175,8 +175,8 @@
                 </Grid>
                 <ProgressBar Height="8" Margin="0,4,0,0"
                              Minimum="0"
-                             Maximum="{Binding ProgressTotal}"
-                             Value="{Binding ProgressValue}"/>
+                             Maximum="{Binding ProgressTotal, Mode=OneWay}"
+                             Value="{Binding ProgressValue, Mode=OneWay}"/>
                 <TextBlock FontSize="11" Foreground="#7F8C8D" Margin="0,2,0,0"
                            Text="{Binding CurrentFile}" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
