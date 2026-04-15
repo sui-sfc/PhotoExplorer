@@ -60,12 +60,39 @@ public sealed class BoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        bool bValue = value is bool b && b;
+        // Accepts bool or int (int 0 = false, >0 = true)
+        bool bValue = value switch
+        {
+            bool b  => b,
+            int  i  => i > 0,
+            _       => false,
+        };
         bool invert = parameter?.ToString() == "Invert";
         if (invert) bValue = !bValue;
         return bValue ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// 棒グラフ用 — Ratio (0.0–1.0) × コンテナ幅 を Rectangle の Width に変換する
+/// </summary>
+public sealed class RatioToWidthConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2
+            && values[0] is double ratio
+            && values[1] is double containerWidth
+            && containerWidth > 0)
+        {
+            return Math.Max(0, ratio * containerWidth);
+        }
+        return 0.0;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }

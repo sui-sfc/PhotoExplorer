@@ -17,6 +17,8 @@ public sealed class UserPreferences
     public string FolderTemplate  { get; set; } = "{yyyy}/{mm}/{dd}/{camera}";
     public OperationMode Mode     { get; set; } = OperationMode.DryRun;
     public int MaxParallelism     { get; set; } = 4;
+    public DateTime? FilterStartDate { get; set; }
+    public DateTime? FilterEndDate   { get; set; }
 
     public static UserPreferences Load()
     {
@@ -28,7 +30,7 @@ public sealed class UserPreferences
                 return JsonConvert.DeserializeObject<UserPreferences>(json) ?? new UserPreferences();
             }
         }
-        catch { /* 読み込み失敗時はデフォルト値を使用 */ }
+        catch { }
         return new UserPreferences();
     }
 
@@ -39,6 +41,6 @@ public sealed class UserPreferences
             Directory.CreateDirectory(Path.GetDirectoryName(DefaultPath)!);
             File.WriteAllText(DefaultPath, JsonConvert.SerializeObject(this, Formatting.Indented));
         }
-        catch { /* 保存失敗は無視 */ }
+        catch { }
     }
 }

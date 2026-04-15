@@ -97,6 +97,10 @@ public partial class App : WpfApplication
         // Application
         services.AddTransient<IOrganizeUseCase, OrganizeUseCase>();
 
+        // Infrastructure: 統計履歴DB（アセットDBと同じパスに別ファイル）
+        var statsDbPath = Path.Combine(appDataDir, "stats_history.db");
+        services.AddSingleton(_ => new StatsHistoryRepository(statsDbPath));
+
         // Presentation
         services.AddTransient<MainViewModel>();
         services.AddTransient<MainWindow>();

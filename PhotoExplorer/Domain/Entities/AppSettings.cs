@@ -32,5 +32,11 @@ public sealed class AppSettings
     /// <summary>SQLiteデータベースパス</summary>
     public string DatabasePath { get; set; } = "photo_explorer.db";
 
+    /// <summary>処理対象の撮影開始日（null = 制限なし）</summary>
+    public DateTime? FilterStartDate { get; set; }
+
+    /// <summary>処理対象の撮影終了日（null = 制限なし）</summary>
+    public DateTime? FilterEndDate { get; set; }
+
     public AppSettings Clone() => (AppSettings)MemberwiseClone();
 }
