@@ -253,9 +253,12 @@
                         <TextBlock FontFamily="Consolas" Text="{}{region}      - 都道府県・州（GPS + exiftool 13+）"/>
                         <TextBlock FontFamily="Consolas" Text="{}{country}     - 国名（GPS + exiftool 13+）"/>
                         <TextBlock FontFamily="Consolas" Text="{}{countrycode} - 国コード JP/US など"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{type}        - ファイル種別（JPEG または RAW）"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{ext}         - 拡張子（jpg / cr2 / nef など）"/>
                         <TextBlock Margin="0,8,0,4" FontWeight="Bold" Text="テンプレート例:"/>
                         <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{dd}/{camera}"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{camera}/{lens}"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{dd}/{type}/{camera}"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{camera}/{type}"/>
                         <TextBlock FontFamily="Consolas" Text="{}{country}/{city}/{yyyy}/{mm}/{dd}"/>
                         <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{dd}/{city}/{camera}"/>
                         <TextBlock Margin="0,6,0,2" Foreground="#7F8C8D" FontSize="11" TextWrapping="Wrap">

@@ -9,6 +9,9 @@ public sealed class PathResolver : IPathResolver
 {
     private readonly INormalizer _normalizer;
 
+    private static readonly HashSet<string> JpegExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg" };
+
     public PathResolver(INormalizer normalizer)
     {
         _normalizer = normalizer;
@@ -24,6 +27,10 @@ public sealed class PathResolver : IPathResolver
         var country = _normalizer.SanitizeForPath(asset.Exif?.GeolocationCountry ?? "Unknown");
         var countryCode = _normalizer.SanitizeForPath(asset.Exif?.GeolocationCountryCode ?? "Unknown");
 
+        // 拡張子（先頭の . を除いた小文字）と種別
+        var ext  = asset.Extension.TrimStart('.').ToLowerInvariant();
+        var type = JpegExtensions.Contains(asset.Extension) ? "JPEG" : "RAW";
+
         var relativePath = template
             .Replace("{yyyy}",        date.Year.ToString("D4"))
             .Replace("{mm}",          date.Month.ToString("D2"))
@@ -33,7 +40,9 @@ public sealed class PathResolver : IPathResolver
             .Replace("{city}",        city)
             .Replace("{region}",      region)
             .Replace("{country}",     country)
-            .Replace("{countrycode}", countryCode);
+            .Replace("{countrycode}", countryCode)
+            .Replace("{type}",        type)
+            .Replace("{ext}",         ext);
 
         var segments = relativePath
             .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
