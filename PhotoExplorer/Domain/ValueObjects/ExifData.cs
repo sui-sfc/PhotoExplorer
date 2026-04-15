@@ -19,6 +19,20 @@ public sealed record ExifData
     public string? ShutterSpeed { get; init; }
     public string? ISO { get; init; }
 
+    /// <summary>GPS緯度（10進度）</summary>
+    public double? GPSLatitude { get; init; }
+    /// <summary>GPS経度（10進度）</summary>
+    public double? GPSLongitude { get; init; }
+
+    /// <summary>exiftool Geolocation: 都市名（exiftool 13+ 必要）</summary>
+    public string? GeolocationCity { get; init; }
+    /// <summary>exiftool Geolocation: 都道府県・州・地域</summary>
+    public string? GeolocationRegion { get; init; }
+    /// <summary>exiftool Geolocation: 国名</summary>
+    public string? GeolocationCountry { get; init; }
+    /// <summary>exiftool Geolocation: 国コード（JP, US など）</summary>
+    public string? GeolocationCountryCode { get; init; }
+
     /// <summary>EXIF抽出に使用した日時フィールド名</summary>
     public string? UsedDateField { get; init; }
 
@@ -33,10 +47,12 @@ public sealed record ExifData
         {
             if (string.IsNullOrWhiteSpace(Model)) return null;
             if (string.IsNullOrWhiteSpace(Make)) return Model;
-            // Model が Make を含む場合は Model のみ返す
             return Model.StartsWith(Make, StringComparison.OrdinalIgnoreCase)
                 ? Model
                 : $"{Make} {Model}";
         }
     }
+
+    /// <summary>GPS座標が有効かどうか</summary>
+    public bool HasGps => GPSLatitude.HasValue && GPSLongitude.HasValue;
 }

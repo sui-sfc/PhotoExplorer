@@ -16,29 +16,28 @@ public sealed class PathResolver : IPathResolver
 
     public string Resolve(ImageAsset asset, string outputRoot, string template)
     {
-        var date = asset.Exif?.EffectiveDate ?? asset.FileCreatedAt;
-        var camera = asset.NormalizedCamera ?? "Unknown";
-        var lens = asset.NormalizedLens ?? "Unknown";
+        var date    = asset.Exif?.EffectiveDate ?? asset.FileCreatedAt;
+        var camera  = asset.NormalizedCamera ?? "Unknown";
+        var lens    = asset.NormalizedLens   ?? "Unknown";
+        var city    = _normalizer.SanitizeForPath(asset.Exif?.GeolocationCity    ?? "Unknown");
+        var region  = _normalizer.SanitizeForPath(asset.Exif?.GeolocationRegion  ?? "Unknown");
+        var country = _normalizer.SanitizeForPath(asset.Exif?.GeolocationCountry ?? "Unknown");
+        var countryCode = _normalizer.SanitizeForPath(asset.Exif?.GeolocationCountryCode ?? "Unknown");
 
-        // テンプレート変数を展開
         var relativePath = template
-            .Replace("{yyyy}", date.Year.ToString("D4"))
-            .Replace("{mm}", date.Month.ToString("D2"))
-            .Replace("{dd}", date.Day.ToString("D2"))
-            .Replace("{camera}", _normalizer.SanitizeForPath(camera))
-            .Replace("{lens}", _normalizer.SanitizeForPath(lens));
+            .Replace("{yyyy}",        date.Year.ToString("D4"))
+            .Replace("{mm}",          date.Month.ToString("D2"))
+            .Replace("{dd}",          date.Day.ToString("D2"))
+            .Replace("{camera}",      _normalizer.SanitizeForPath(camera))
+            .Replace("{lens}",        _normalizer.SanitizeForPath(lens))
+            .Replace("{city}",        city)
+            .Replace("{region}",      region)
+            .Replace("{country}",     country)
+            .Replace("{countrycode}", countryCode);
 
-        // 空セグメントを除去（取得できなかった要素をスキップ）
         var segments = relativePath
-            .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(s => s != "Unknown" || template.Contains("{camera}") || template.Contains("{lens}"))
-            .ToArray();
-
-        // Unknown セグメントを除去しない場合もあるので、シンプルに結合
-        var cleanSegments = relativePath
             .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
 
-        var relativeDir = Path.Combine(cleanSegments);
-        return Path.Combine(outputRoot, relativeDir, asset.FileName);
+        return Path.Combine(outputRoot, Path.Combine(segments), asset.FileName);
     }
 }

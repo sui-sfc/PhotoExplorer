@@ -12,7 +12,6 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
     private readonly string _exifToolPath;
     private bool? _isAvailable;
 
-    // exiftool の日時フォーマット
     private static readonly string[] DateFormats =
     [
         "yyyy:MM:dd HH:mm:ss",
@@ -26,36 +25,13 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         _exifToolPath = exifToolPath;
     }
 
-    /// <summary>exiftoolが実行可能か確認する</summary>
     public bool IsAvailable()
     {
         if (_isAvailable.HasValue) return _isAvailable.Value;
-        try
-        {
-            using var p = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = _exifToolPath,
-                    Arguments = "-ver",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow = true,
-                }
-            };
-            p.Start();
-            var ver = p.StandardOutput.ReadToEnd();
-            p.WaitForExit();
-            _isAvailable = !string.IsNullOrWhiteSpace(ver);
-        }
-        catch
-        {
-            _isAvailable = false;
-        }
+        _isAvailable = GetVersion() != null;
         return _isAvailable.Value;
     }
 
-    /// <summary>exiftoolのバージョン文字列を返す（利用不可なら null）</summary>
     public string? GetVersion()
     {
         try
@@ -84,11 +60,14 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         CancellationToken cancellationToken = default)
     {
         // -n: 数値出力  -charset UTF8: 文字化け防止
-        // -LensModel と -LensID の両方を試す（メーカーによって異なるタグを使用）
-        var args = $"-json -n -charset UTF8 " +
-                   $"-DateTimeOriginal -CreateDate -ModifyDate " +
-                   $"-Make -Model -LensModel -LensID -Lens " +
-                   $"-FocalLength -Aperture -ShutterSpeed -ISO " +
+        // Geolocation* タグは exiftool 13+ で利用可能
+        var args = "-json -n -charset UTF8 " +
+                   "-DateTimeOriginal -CreateDate -ModifyDate " +
+                   "-Make -Model -LensModel -LensID -Lens " +
+                   "-FocalLength -Aperture -ShutterSpeed -ISO " +
+                   "-GPSLatitude -GPSLongitude " +
+                   "-GeolocationCity -GeolocationRegion " +
+                   "-GeolocationCountry -GeolocationCountryCode " +
                    $"\"{filePath}\"";
 
         using var process = new Process
@@ -119,37 +98,44 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
             if (obj == null) return null;
 
             DateTime? dateOriginal = ParseDate(obj["DateTimeOriginal"]?.ToString());
-            DateTime? createDate = ParseDate(obj["CreateDate"]?.ToString());
-            DateTime? modifyDate = ParseDate(obj["ModifyDate"]?.ToString());
+            DateTime? createDate   = ParseDate(obj["CreateDate"]?.ToString());
+            DateTime? modifyDate   = ParseDate(obj["ModifyDate"]?.ToString());
 
             string? usedField = dateOriginal.HasValue ? "DateTimeOriginal"
                 : createDate.HasValue ? "CreateDate"
                 : modifyDate.HasValue ? "ModifyDate"
                 : null;
 
-            // LensModel → LensID → Lens の優先順位でレンズ名を取得
             var lensModel = obj["LensModel"]?.ToString()
                          ?? obj["LensID"]?.ToString()
                          ?? obj["Lens"]?.ToString();
 
+            double? lat = ParseDouble(obj["GPSLatitude"]?.ToString());
+            double? lon = ParseDouble(obj["GPSLongitude"]?.ToString());
+
             return new ExifData
             {
-                DateTimeOriginal = dateOriginal,
-                CreateDate = createDate,
-                ModifyDate = modifyDate,
-                Make = obj["Make"]?.ToString(),
-                Model = obj["Model"]?.ToString(),
-                LensModel = lensModel,
-                FocalLength = obj["FocalLength"]?.ToString(),
-                Aperture = obj["Aperture"]?.ToString(),
-                ShutterSpeed = obj["ShutterSpeed"]?.ToString(),
-                ISO = obj["ISO"]?.ToString(),
-                UsedDateField = usedField,
+                DateTimeOriginal    = dateOriginal,
+                CreateDate          = createDate,
+                ModifyDate          = modifyDate,
+                Make                = obj["Make"]?.ToString(),
+                Model               = obj["Model"]?.ToString(),
+                LensModel           = lensModel,
+                FocalLength         = obj["FocalLength"]?.ToString(),
+                Aperture            = obj["Aperture"]?.ToString(),
+                ShutterSpeed        = obj["ShutterSpeed"]?.ToString(),
+                ISO                 = obj["ISO"]?.ToString(),
+                GPSLatitude         = lat,
+                GPSLongitude        = lon,
+                GeolocationCity     = NullIfEmpty(obj["GeolocationCity"]?.ToString()),
+                GeolocationRegion   = NullIfEmpty(obj["GeolocationRegion"]?.ToString()),
+                GeolocationCountry  = NullIfEmpty(obj["GeolocationCountry"]?.ToString()),
+                GeolocationCountryCode = NullIfEmpty(obj["GeolocationCountryCode"]?.ToString()),
+                UsedDateField       = usedField,
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // exiftool が見つからない場合や解析失敗時は null を返す
             return null;
         }
     }
@@ -163,4 +149,15 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
             return dt;
         return null;
     }
+
+    private static double? ParseDouble(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
+            return d;
+        return null;
+    }
+
+    private static string? NullIfEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 }

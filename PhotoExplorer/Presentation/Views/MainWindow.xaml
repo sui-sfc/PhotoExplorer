@@ -244,14 +244,24 @@
                             4. まず DRY_RUN で実行し、ログを確認してから COPY/MOVE を実行してください。
                         </TextBlock>
                         <TextBlock FontWeight="Bold" Text="テンプレート変数:" Margin="0,8,0,4"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{yyyy} - 撮影年（4桁）"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{mm}   - 撮影月（2桁）"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{dd}   - 撮影日（2桁）"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{camera} - カメラ名"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{lens}   - レンズ名"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{yyyy}        - 撮影年（4桁）"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{mm}          - 撮影月（2桁）"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{dd}          - 撮影日（2桁）"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{camera}      - カメラ名"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{lens}        - レンズ名"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{city}        - 都市名（GPS + exiftool 13+）"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{region}      - 都道府県・州（GPS + exiftool 13+）"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{country}     - 国名（GPS + exiftool 13+）"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{countrycode} - 国コード JP/US など"/>
                         <TextBlock Margin="0,8,0,4" FontWeight="Bold" Text="テンプレート例:"/>
                         <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{dd}/{camera}"/>
                         <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{camera}/{lens}"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{country}/{city}/{yyyy}/{mm}/{dd}"/>
+                        <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{dd}/{city}/{camera}"/>
+                        <TextBlock Margin="0,6,0,2" Foreground="#7F8C8D" FontSize="11" TextWrapping="Wrap">
+                            ※ GPS変数は写真にGPS情報が記録されており、exiftool 13以降を使用している場合のみ有効です。
+                            GPS情報がない場合は「Unknown」フォルダになります。
+                        </TextBlock>
                         <TextBlock FontWeight="Bold" Margin="0,8,0,4" Text="注意事項:"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#E74C3C">
                             ・DRY_RUN 以外のモードは元ファイルに変更を加えます。必ず事前にバックアップを取得してください。<LineBreak/>
