@@ -1,4 +1,6 @@
-using System.Windows.Media;
+using Brush = System.Windows.Media.Brush;
+using Brushes = System.Windows.Media.Brushes;
+using BrushConverter = System.Windows.Media.BrushConverter;
 
 namespace PhotoExplorer.Presentation.ViewModels;
 
