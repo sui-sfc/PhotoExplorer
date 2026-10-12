@@ -64,7 +64,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="HourColumnTemplate" DataType="{x:Type vm:BarItem}">
-            <StackPanel Width="22" ToolTip="{Binding Tooltip}" Background="Transparent">
+            <StackPanel ToolTip="{Binding Tooltip}" Background="Transparent">
                 <Grid Height="110">
                     <Border Background="{Binding Fill}" CornerRadius="2,2,0,0" Margin="2,0" RenderTransformOrigin="0.5,1">
                         <Border.RenderTransform>
@@ -505,8 +505,13 @@
                                 <Border Style="{StaticResource ChartCard}">
                                     <StackPanel>
                                         <TextBlock Style="{StaticResource SectionHeader}" Text="撮影した時間帯（時）"/>
-                                        <ItemsControl ItemsSource="{Binding Statistics.HourChart}" ItemTemplate="{StaticResource HourColumnTemplate}"
-                                                      ItemsPanel="{StaticResource HorizontalPanel}" HorizontalAlignment="Left"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.HourChart}" ItemTemplate="{StaticResource HourColumnTemplate}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Rows="1"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                        </ItemsControl>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource ChartCard}">

@@ -18,6 +18,9 @@ public partial class MainWindow : Window
         RestoreWindowPlacement();
         viewModel.LogAppended += (_, _) => ScrollLogToEnd();
 
+        // DatePicker の透かし文字（既定は英語の "Select a date"）を日本語にする
+        EventManager.RegisterClassHandler(typeof(DatePicker), LoadedEvent, new RoutedEventHandler(LocalizeDatePicker));
+
         AddHandler(PreviewDragOverEvent, new DragEventHandler(OnPreviewDragOver), handledEventsToo: true);
         AddHandler(PreviewDropEvent, new DragEventHandler(OnPreviewDrop), handledEventsToo: true);
     }
@@ -26,6 +29,17 @@ public partial class MainWindow : Window
     {
         if (!_vm.AutoScroll || LogListBox.Items.Count == 0) return;
         LogListBox.ScrollIntoView(LogListBox.Items[^1]);
+    }
+
+    private static void LocalizeDatePicker(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DatePicker dp) return;
+        if (dp.Template.FindName("PART_TextBox", dp) is System.Windows.Controls.Primitives.DatePickerTextBox tb)
+        {
+            tb.ApplyTemplate();
+            if (tb.Template.FindName("PART_Watermark", tb) is ContentControl wm)
+                wm.Content = "日付を選択";
+        }
     }
 
     // ---- フォルダのドラッグ＆ドロップ（Tag="Input" / "Output" / "Trash" のテキストボックス） ----
