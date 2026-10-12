@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      commit_screenshots:
+        description: "README 用スクリーンショットを撮り直してコミットする"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  PE_REQUIRE_EXIFTOOL: "1"
+
+jobs:
+  test-linux:
+    name: テスト (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: exiftool をインストール
+        run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
+      - name: テスト
+        run: dotnet test PhotoExplorer.Tests/PhotoExplorer.Tests.csproj -c Release --logger "console;verbosity=normal"
+
+  windows:
+    name: ビルド・テスト・発行 (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: exiftool をインストール
+        shell: pwsh
+        run: |
+          for ($i = 1; $i -le 3; $i++) {
+            choco install exiftool -y --no-progress
+            $exe = Get-ChildItem "C:/ProgramData/chocolatey/lib/exiftool" -Recurse -Include "exiftool.exe", "exiftool(-k).exe" -ErrorAction SilentlyContinue |
+                   Where-Object { $_.FullName -notmatch "\\shims?\\" } | Select-Object -First 1
+            if ($exe) { break }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $exe) { throw "exiftool をインストールできませんでした" }
+          $dir = $exe.DirectoryName
+          if ($exe.Name -ne "exiftool.exe") { Copy-Item $exe.FullName (Join-Path $dir "exiftool.exe") }
+          Add-Content $env:GITHUB_PATH $dir
+          & (Join-Path $dir "exiftool.exe") -ver
+      - name: ビルド
+        run: dotnet build PhotoExplorer.sln -c Release
+      - name: テスト
+        run: dotnet test PhotoExplorer.Tests/PhotoExplorer.Tests.csproj -c Release --no-build --logger "console;verbosity=normal"
+      - name: 発行（単一 exe）
+        run: dotnet publish PhotoExplorer/PhotoExplorer.csproj -c Release -o publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhotoExplorer-win-x64
+          path: publish/
+
+      - name: スクリーンショットを作成
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $out = Join-Path $PWD "docs/images"
+          $p = Start-Process -FilePath "publish/PhotoExplorer.exe" -ArgumentList "--screenshots", "`"$out`"" -PassThru -Wait
+          Get-ChildItem $out
+          if (Test-Path "$out/screenshot-error.txt") { Get-Content "$out/screenshot-error.txt"; exit 1 }
+          exit $p.ExitCode
+      - name: 位置情報の読み取りを確認
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          exiftool -ver
+          exiftool -api geolocation -n -s -GPSLatitude -GPSLongitude -GeolocationCity -GeolocationCountry -r -ext jpg "C:/PhotoExplorerDemo/Pictures" | Select-Object -First 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: docs/images/
+      - name: スクリーンショットをコミット
+        if: github.event_name == 'workflow_dispatch' && inputs.commit_screenshots || contains(github.event.head_commit.message, '[screenshots]')
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/images/*.png
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "docs: README のスクリーンショットを更新 [skip ci]"
+            git pull --rebase origin $env:GITHUB_REF_NAME
+            git push origin HEAD:$env:GITHUB_REF_NAME
+          }

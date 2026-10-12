@@ -24,21 +24,22 @@ public sealed class RelayCommand : ICommand
 
     public bool CanExecute(object? parameter) => _canExecute?.Invoke(parameter) ?? true;
     public void Execute(object? parameter) => _execute(parameter);
-
-    public void RaiseCanExecuteChanged() => CommandManager.InvalidateRequerySuggested();
 }
 
 public sealed class AsyncRelayCommand : ICommand
 {
-    private readonly Func<Task> _execute;
-    private readonly Func<bool>? _canExecute;
+    private readonly Func<object?, Task> _execute;
+    private readonly Func<object?, bool>? _canExecute;
     private bool _isExecuting;
 
-    public AsyncRelayCommand(Func<Task> execute, Func<bool>? canExecute = null)
+    public AsyncRelayCommand(Func<object?, Task> execute, Func<object?, bool>? canExecute = null)
     {
         _execute = execute;
         _canExecute = canExecute;
     }
+
+    public AsyncRelayCommand(Func<Task> execute, Func<bool>? canExecute = null)
+        : this(_ => execute(), canExecute != null ? _ => canExecute() : null) { }
 
     public event EventHandler? CanExecuteChanged
     {
@@ -46,13 +47,20 @@ public sealed class AsyncRelayCommand : ICommand
         remove => CommandManager.RequerySuggested -= value;
     }
 
-    public bool CanExecute(object? parameter) => !_isExecuting && (_canExecute?.Invoke() ?? true);
+    public bool CanExecute(object? parameter) => !_isExecuting && (_canExecute?.Invoke(parameter) ?? true);
 
     public async void Execute(object? parameter)
     {
         _isExecuting = true;
         CommandManager.InvalidateRequerySuggested();
-        try { await _execute(); }
+        try
+        {
+            await _execute(parameter);
+        }
+        catch (Exception ex)
+        {
+            Services.Dialogs.Error($"エラーが発生しました:\n{ex.Message}");
+        }
         finally
         {
             _isExecuting = false;

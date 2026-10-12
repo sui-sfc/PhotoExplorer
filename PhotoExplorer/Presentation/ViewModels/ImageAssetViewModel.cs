@@ -1,56 +1,68 @@
 using PhotoExplorer.Domain.Entities;
 using PhotoExplorer.Domain.Enums;
+using PhotoExplorer.Presentation.Converters;
 
 namespace PhotoExplorer.Presentation.ViewModels;
 
-public sealed class ImageAssetViewModel : ViewModelBase
+/// <summary>「ファイル一覧」タブの1行</summary>
+public sealed class ImageAssetViewModel
 {
-    private readonly ImageAsset _asset;
+    public ImageAssetViewModel(ImageAsset asset) => Asset = asset;
 
-    public ImageAssetViewModel(ImageAsset asset)
-    {
-        _asset = asset;
-    }
+    public ImageAsset Asset { get; }
 
-    public string FileName => _asset.FileName;
-    public string SourcePath => _asset.SourcePath;
-    public string? OutputPath => _asset.OutputPath;
-    public long FileSize => _asset.FileSize;
-    public string FileSizeDisplay => FormatSize(_asset.FileSize);
-    public AssetStatus Status => _asset.Status;
-    public string StatusDisplay => _asset.Status switch
+    public string FileName => Asset.FileName;
+    public string SourcePath => Asset.SourcePath;
+    public string? OutputPath => Asset.OutputPath;
+    public long FileSize => Asset.FileSize;
+    public string FileSizeText => FileSizeConverter.Format(Asset.FileSize);
+    public AssetStatus Status => Asset.Status;
+    public string StatusDisplay => StatusText(Asset.Status);
+    public string? Message => Asset.ErrorMessage;
+    public string Camera => Asset.NormalizedCamera ?? "";
+    public string Lens => Asset.NormalizedLens ?? "";
+    public DateTime ShotAt => Asset.BestDate;
+    public string ShotAtDisplay => Asset.HasExifDate
+        ? Asset.BestDate.ToString("yyyy/MM/dd HH:mm:ss")
+        : Asset.BestDate.ToString("yyyy/MM/dd HH:mm:ss") + "（ファイル日時）";
+    public string Resolution => Asset.Exif?.ImageWidth is int w && Asset.Exif?.ImageHeight is int h ? $"{w}×{h}" : "";
+    public string Location => string.Join(" / ", new[] { Asset.Exif?.GeolocationCountry, Asset.Exif?.GeolocationCity }
+        .Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    public bool Matches(string search) =>
+        SourcePath.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || (OutputPath?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
+        || Camera.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Lens.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || (Message?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
+
+    public static string StatusText(AssetStatus s) => s switch
     {
-        AssetStatus.Scanned => "スキャン済",
-        AssetStatus.MetadataOk => "EXIF完全",
-        AssetStatus.PartialMetadata => "EXIF一部",
-        AssetStatus.NoMetadata => "EXIFなし",
-        AssetStatus.Duplicate => "重複",
-        AssetStatus.Processed => "完了",
-        AssetStatus.Error => "エラー",
-        _ => _asset.Status.ToString()
+        AssetStatus.Scanned         => "未処理",
+        AssetStatus.MetadataOk      => "整理予定",
+        AssetStatus.PartialMetadata => "整理予定（撮影日なし）",
+        AssetStatus.NoMetadata      => "整理予定（EXIFなし）",
+        AssetStatus.Duplicate       => "重複",
+        AssetStatus.Processed       => "完了",
+        AssetStatus.Skipped         => "スキップ（既にあり）",
+        AssetStatus.Filtered        => "対象外（日付）",
+        AssetStatus.Error           => "エラー",
+        _ => s.ToString(),
     };
-    public string? ErrorMessage => _asset.ErrorMessage;
-    public string? CameraName => _asset.NormalizedCamera;
-    public string? LensName => _asset.NormalizedLens;
-    public DateTime? ShotAt => _asset.Exif?.EffectiveDate;
-    public string ShotAtDisplay => ShotAt?.ToString("yyyy/MM/dd HH:mm:ss") ?? "(不明)";
-    public bool IsDuplicate => _asset.Status == AssetStatus.Duplicate;
-    public string? DuplicateGroupId => _asset.DuplicateGroupId;
+}
 
-    private static string FormatSize(long bytes) => bytes switch
-    {
-        >= 1024 * 1024 * 1024 => $"{bytes / (1024.0 * 1024 * 1024):F1} GB",
-        >= 1024 * 1024 => $"{bytes / (1024.0 * 1024):F1} MB",
-        >= 1024 => $"{bytes / 1024.0:F1} KB",
-        _ => $"{bytes} B"
-    };
+public sealed record StatusFilterOption(string Label, Func<AssetStatus, bool> Predicate)
+{
+    public static readonly IReadOnlyList<StatusFilterOption> All =
+    [
+        new("すべて",               _ => true),
+        new("完了・整理予定",       s => s is AssetStatus.Processed or AssetStatus.MetadataOk or AssetStatus.PartialMetadata or AssetStatus.NoMetadata),
+        new("撮影日なし・EXIFなし", s => s is AssetStatus.PartialMetadata or AssetStatus.NoMetadata),
+        new("スキップ",             s => s == AssetStatus.Skipped),
+        new("重複",                 s => s == AssetStatus.Duplicate),
+        new("対象外（日付）",       s => s == AssetStatus.Filtered),
+        new("エラー",               s => s == AssetStatus.Error),
+    ];
 
-    public void Refresh()
-    {
-        OnPropertyChanged(nameof(Status));
-        OnPropertyChanged(nameof(StatusDisplay));
-        OnPropertyChanged(nameof(OutputPath));
-        OnPropertyChanged(nameof(ErrorMessage));
-        OnPropertyChanged(nameof(IsDuplicate));
-    }
+    public override string ToString() => Label;
 }
