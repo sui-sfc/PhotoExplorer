@@ -103,6 +103,8 @@ public sealed class ExifToolFactAttribute : FactAttribute
 {
     public ExifToolFactAttribute()
     {
-        if (!TestImages.HasExifTool) Skip = "exiftool がインストールされていません";
+        // CI では PE_REQUIRE_EXIFTOOL=1 を設定し、exiftool がなければスキップではなく失敗させる
+        if (!TestImages.HasExifTool && Environment.GetEnvironmentVariable("PE_REQUIRE_EXIFTOOL") != "1")
+            Skip = "exiftool がインストールされていません";
     }
 }

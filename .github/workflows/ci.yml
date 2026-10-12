@@ -13,6 +13,9 @@ on:
 permissions:
   contents: write
 
+env:
+  PE_REQUIRE_EXIFTOOL: "1"
+
 jobs:
   test-linux:
     name: テスト (Linux)
@@ -36,7 +39,16 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - name: exiftool をインストール
-        run: choco install exiftool -y --no-progress
+        shell: pwsh
+        run: |
+          # 最新版を exiftool.org から取得し、PATH に追加する
+          $ver = (Invoke-WebRequest https://exiftool.org/ver.txt -UseBasicParsing).Content.Trim()
+          Invoke-WebRequest "https://exiftool.org/exiftool-${ver}_64.zip" -OutFile exiftool.zip -UseBasicParsing
+          Expand-Archive exiftool.zip -DestinationPath "$env:RUNNER_TEMP/et"
+          $dir = (Get-ChildItem "$env:RUNNER_TEMP/et" -Directory | Select-Object -First 1).FullName
+          Rename-Item (Join-Path $dir "exiftool(-k).exe") "exiftool.exe"
+          Add-Content $env:GITHUB_PATH $dir
+          & (Join-Path $dir "exiftool.exe") -ver
       - name: ビルド
         run: dotnet build PhotoExplorer.sln -c Release
       - name: テスト
@@ -62,9 +74,8 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          $exiftool = "C:/ProgramData/chocolatey/bin/exiftool.exe"
-          & $exiftool -ver
-          & $exiftool -api geolocation -n -s -GPSLatitude -GPSLongitude -GeolocationCity -GeolocationCountry -r -ext jpg "C:/PhotoExplorerDemo/Pictures" | Select-Object -First 30
+          exiftool -ver
+          exiftool -api geolocation -n -s -GPSLatitude -GPSLongitude -GeolocationCity -GeolocationCountry -r -ext jpg "C:/PhotoExplorerDemo/Pictures" | Select-Object -First 30
       - uses: actions/upload-artifact@v4
         if: always()
         with:
