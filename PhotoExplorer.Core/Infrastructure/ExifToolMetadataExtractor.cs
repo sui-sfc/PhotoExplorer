@@ -118,7 +118,7 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         {
             // 引数（ファイル名を含む）は標準入力から UTF-8 で渡す（-@ -）。
             // コマンドラインや一時ファイルのパスに日本語が含まれると Windows 版 exiftool が扱えないため。
-            var lines = new List<string> { "-json", "-n", "-fast", "-q", "-api", "QuickTimeUTC=1" };
+            var lines = new List<string> { "-json", "-n", "-fast", "-q", "-api", "QuickTimeUTC=1", "-api", "Geolocation=1" };
             lines.AddRange(Tags);
             lines.AddRange(paths);
 

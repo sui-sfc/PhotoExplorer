@@ -12,7 +12,8 @@
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display"
         FontFamily="Yu Gothic UI, Meiryo UI, Segoe UI"
-        FontSize="12.5">
+        FontSize="12.5"
+        Language="ja-JP">
 
     <Window.TaskbarItemInfo>
         <TaskbarItemInfo ProgressState="{Binding TaskbarState}" ProgressValue="{Binding ProgressFraction}"/>
@@ -52,6 +53,20 @@
             <StackPanel Width="34" ToolTip="{Binding Tooltip}" Background="Transparent">
                 <Grid Height="110">
                     <Border Background="{Binding Fill}" CornerRadius="3,3,0,0" Margin="4,0" RenderTransformOrigin="0.5,1">
+                        <Border.RenderTransform>
+                            <ScaleTransform ScaleY="{Binding Ratio}"/>
+                        </Border.RenderTransform>
+                    </Border>
+                </Grid>
+                <TextBlock Text="{Binding Label}" FontSize="10" HorizontalAlignment="Center" Margin="0,3,0,0"
+                           Foreground="{StaticResource MutedBrush}"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="HourColumnTemplate" DataType="{x:Type vm:BarItem}">
+            <StackPanel Width="22" ToolTip="{Binding Tooltip}" Background="Transparent">
+                <Grid Height="110">
+                    <Border Background="{Binding Fill}" CornerRadius="2,2,0,0" Margin="2,0" RenderTransformOrigin="0.5,1">
                         <Border.RenderTransform>
                             <ScaleTransform ScaleY="{Binding Ratio}"/>
                         </Border.RenderTransform>
@@ -132,6 +147,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <!-- 入力 -->
@@ -204,16 +220,21 @@
                                 VerticalAlignment="Center" Value="{Binding MaxParallelism}"
                                 ToolTip="多いほど速くなりますが、HDD や NAS では 2〜4 程度がおすすめです"/>
                         <TextBlock Text="{Binding MaxParallelism}" Width="24" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                        <TextBlock Text="撮影日" Style="{StaticResource FieldLabel}" Margin="14,0,6,0"/>
+                    </WrapPanel>
+
+                    <!-- 日付フィルタ -->
+                    <TextBlock Grid.Row="6" Text="撮影日で絞る" Style="{StaticResource FieldLabel}"/>
+                    <WrapPanel Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,2">
                         <DatePicker Width="120" SelectedDate="{Binding FilterStartDate}" ToolTip="この日以降に撮影した写真だけを対象にする"/>
                         <TextBlock Text="〜" VerticalAlignment="Center" Margin="4,0"/>
                         <DatePicker Width="120" SelectedDate="{Binding FilterEndDate}" ToolTip="この日までに撮影した写真だけを対象にする"/>
                         <Button Content="解除" Style="{StaticResource SmallButton}" MinWidth="40" Command="{Binding ClearFilterCommand}"
                                 Visibility="{Binding HasDateFilter, Converter={StaticResource BoolToVis}}"/>
+                        <TextBlock Text="（空欄ならすべての写真が対象）" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="10,0,0,0"/>
                     </WrapPanel>
 
                     <!-- 詳細オプション -->
-                    <Expander x:Name="OptionsExpander" Grid.Row="6" Grid.ColumnSpan="3" Header="詳細オプション" Margin="0,6,0,0">
+                    <Expander x:Name="OptionsExpander" Grid.Row="7" Grid.ColumnSpan="3" Header="詳細オプション" Margin="0,6,0,0">
                         <StackPanel Margin="4,6,0,0">
                             <WrapPanel>
                                 <CheckBox Content="動画（mp4 / mov など）も整理する" IsChecked="{Binding IncludeVideos}"/>
@@ -483,13 +504,9 @@
                             <StackPanel Grid.Column="1">
                                 <Border Style="{StaticResource ChartCard}">
                                     <StackPanel>
-                                        <TextBlock Style="{StaticResource SectionHeader}" Text="撮影した時間帯"/>
-                                        <ItemsControl ItemsSource="{Binding Statistics.HourChart}" ItemTemplate="{StaticResource ColumnTemplate}"
-                                                      ItemsPanel="{StaticResource HorizontalPanel}" HorizontalAlignment="Left">
-                                            <ItemsControl.LayoutTransform>
-                                                <ScaleTransform ScaleX="0.62" ScaleY="1"/>
-                                            </ItemsControl.LayoutTransform>
-                                        </ItemsControl>
+                                        <TextBlock Style="{StaticResource SectionHeader}" Text="撮影した時間帯（時）"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.HourChart}" ItemTemplate="{StaticResource HourColumnTemplate}"
+                                                      ItemsPanel="{StaticResource HorizontalPanel}" HorizontalAlignment="Left"/>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource ChartCard}">

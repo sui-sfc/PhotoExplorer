@@ -57,6 +57,12 @@ jobs:
           Get-ChildItem $out
           if (Test-Path "$out/screenshot-error.txt") { Get-Content "$out/screenshot-error.txt"; exit 1 }
           exit $p.ExitCode
+      - name: 位置情報の読み取りを確認
+        if: always()
+        shell: pwsh
+        run: |
+          exiftool -ver
+          exiftool -api geolocation -n -s -GPSLatitude -GPSLongitude -GeolocationCity -GeolocationCountry -r -ext jpg "C:/PhotoExplorerDemo/Pictures" | Select-Object -First 30
       - uses: actions/upload-artifact@v4
         if: always()
         with:

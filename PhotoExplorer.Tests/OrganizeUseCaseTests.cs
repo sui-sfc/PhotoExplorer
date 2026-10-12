@@ -90,7 +90,7 @@ public class OrganizeUseCaseTests
         Assert.Contains(Path.Combine("2010", "10"), scan.OutputPath);
 
         Assert.Equal(("RICOH_GR_IIIx", 3), r.Statistics.CameraBreakdown[0]);
-        Assert.Equal(2, r.Statistics.HourBreakdown.Single(x => x.Label == "09時").Count); // 重複コピーも同時刻
+        Assert.Equal(2, r.Statistics.HourBreakdown.Single(x => x.Label == "9").Count); // 重複コピーも同時刻
         Assert.Contains(r.Log, l => l.Message.Contains("DRY_RUN"));
     }
 

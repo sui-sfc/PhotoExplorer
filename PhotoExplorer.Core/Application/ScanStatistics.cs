@@ -84,7 +84,7 @@ public sealed class ScanStatistics
                 .Where(a => a.Exif?.GeolocationCity != null || a.Exif?.GeolocationCountry != null)
                 .Select(a => string.Join(" / ", new[] { a.Exif!.GeolocationCountry, a.Exif.GeolocationCity }
                     .Where(s => !string.IsNullOrWhiteSpace(s)))), topN),
-            HourBreakdown = Enumerable.Range(0, 24).Select(h => ($"{h:D2}時", hours[h])).ToList(),
+            HourBreakdown = Enumerable.Range(0, 24).Select(h => (h.ToString(), hours[h])).ToList(),
             WeekdayBreakdown = Enumerable.Range(0, 7).Select(i => (weekdayNames[i], weekdays[i])).ToList(),
         };
     }

@@ -51,7 +51,10 @@ internal static class ScreenshotRunner
         {
             Dialogs.AutoAnswer = true;
             Directory.CreateDirectory(outputDir);
-            var root = Path.Combine(Path.GetTempPath(), "PhotoExplorerScreenshots");
+            // 画面に出るパスが短くなるよう、できればドライブ直下に作る
+            var root = Path.Combine(Path.GetPathRoot(Path.GetTempPath()) ?? Path.GetTempPath(), "PhotoExplorerDemo");
+            try { Directory.CreateDirectory(root); }
+            catch { root = Path.Combine(Path.GetTempPath(), "PhotoExplorerDemo"); }
             var photos = Path.Combine(root, "SDカード");
             var output = Path.Combine(root, "Pictures");
             var trash = Path.Combine(root, "重複");
@@ -72,6 +75,7 @@ internal static class ScreenshotRunner
             vm.FolderTemplate = "{yyyy}/{mm}/{camera}";
             vm.FileNameTemplate = "";
             vm.MaxParallelism = 4;
+            vm.AutoScroll = false;
 
             vm.OperationMode = OperationMode.DryRun;
             await RunAndWait(vm);
@@ -84,6 +88,12 @@ internal static class ScreenshotRunner
             {
                 tabs.SelectedIndex = i;
                 await Settle(window, i == 3 ? 2500 : 600);
+                if (i == 0 && window.FindName("LogListBox") is ListBox log && log.Items.Count > 0)
+                {
+                    // 処理の流れが分かるようにログの先頭を見せる
+                    log.ScrollIntoView(log.Items[0]);
+                    await Settle(window, 300);
+                }
                 Save(window, Path.Combine(outputDir, names[i] + ".png"));
             }
 
@@ -95,6 +105,7 @@ internal static class ScreenshotRunner
 
             // 詳細オプションを開いた状態
             tabs.SelectedIndex = 0;
+            vm.AutoScroll = false;
             if (window.FindName("OptionsExpander") is Expander exp) exp.IsExpanded = true;
             await Settle(window, 600);
             Save(window, Path.Combine(outputDir, "06-options.png"));
