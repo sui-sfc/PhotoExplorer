@@ -41,12 +41,16 @@ jobs:
       - name: exiftool をインストール
         shell: pwsh
         run: |
-          # 最新版を exiftool.org から取得し、PATH に追加する
-          $ver = (Invoke-WebRequest https://exiftool.org/ver.txt -UseBasicParsing).Content.Trim()
-          Invoke-WebRequest "https://exiftool.org/exiftool-${ver}_64.zip" -OutFile exiftool.zip -UseBasicParsing
-          Expand-Archive exiftool.zip -DestinationPath "$env:RUNNER_TEMP/et"
-          $dir = (Get-ChildItem "$env:RUNNER_TEMP/et" -Directory | Select-Object -First 1).FullName
-          Rename-Item (Join-Path $dir "exiftool(-k).exe") "exiftool.exe"
+          for ($i = 1; $i -le 3; $i++) {
+            choco install exiftool -y --no-progress
+            $exe = Get-ChildItem "C:/ProgramData/chocolatey/lib/exiftool" -Recurse -Include "exiftool.exe", "exiftool(-k).exe" -ErrorAction SilentlyContinue |
+                   Where-Object { $_.FullName -notmatch "\\shims?\\" } | Select-Object -First 1
+            if ($exe) { break }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $exe) { throw "exiftool をインストールできませんでした" }
+          $dir = $exe.DirectoryName
+          if ($exe.Name -ne "exiftool.exe") { Copy-Item $exe.FullName (Join-Path $dir "exiftool.exe") }
           Add-Content $env:GITHUB_PATH $dir
           & (Join-Path $dir "exiftool.exe") -ver
       - name: ビルド
