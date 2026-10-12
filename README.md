@@ -51,7 +51,7 @@ D:\Pictures
 
 写真の撮影情報を読むのに、無料のツール [ExifTool](https://exiftool.org/) を使います。
 
-1. exiftool.org から **Windows Executable**（`exiftool-<バージョン>_64.zip`）をダウンロードします。
+1. exiftool.org のトップページから **Windows Executable**（64-bit の zip）をダウンロードします。
 2. 展開すると `exiftool(-k).exe` と `exiftool_files` フォルダがあります。この **2 つとも** を、`PhotoExplorer.exe` と同じ場所にある `Resources` フォルダ（なければ作成）へ入れます。
 
 ```
@@ -237,7 +237,7 @@ PhotoExplorer.Tests/       xUnit テスト（実際の exiftool を使う結合�
 
 ### スクリーンショットの作り直し
 
-README の画像は、アプリを実際に動かして撮ったものです。デモ用の写真を自動で作って DRY_RUN と COPY を実行し、各タブを画像にします。
+README の画像は、GitHub Actions の Windows 上でアプリを実際に動かして撮ったものです。風景画のデモ写真（カメラ名・撮影日・GPS 付き）を自動で作って DRY_RUN と COPY を実行し、各タブを画像にします。
 
 ```powershell
 publish\PhotoExplorer.exe --screenshots docs\images
