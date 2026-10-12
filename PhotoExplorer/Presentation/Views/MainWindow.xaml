@@ -3,378 +3,721 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:conv="clr-namespace:PhotoExplorer.Presentation.Converters"
+        xmlns:vm="clr-namespace:PhotoExplorer.Presentation.ViewModels"
         mc:Ignorable="d"
-        Title="PhotoExplorer - 写真整理ツール"
-        Height="860" Width="1100"
-        MinWidth="900" MinHeight="660"
-        WindowStartupLocation="CenterScreen">
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+        Title="PhotoExplorer — 写真整理ツール"
+        Width="1180" Height="900" MinWidth="960" MinHeight="680"
+        Background="White"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="Yu Gothic UI, Meiryo UI, Segoe UI"
+        FontSize="12.5">
+
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo ProgressState="{Binding TaskbarState}" ProgressValue="{Binding ProgressFraction}"/>
+    </Window.TaskbarItemInfo>
+
+    <Window.InputBindings>
+        <KeyBinding Key="F5" Command="{Binding StartCommand}"/>
+        <KeyBinding Key="Escape" Command="{Binding StopCommand}"/>
+        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveLogCommand}"/>
+        <KeyBinding Key="E" Modifiers="Control" Command="{Binding ExportCsvCommand}"/>
+    </Window.InputBindings>
 
     <Window.Resources>
-        <conv:StatusToColorConverter     x:Key="StatusToColor"/>
-        <conv:OperationModeDisplayConverter x:Key="ModeDisplay"/>
-        <conv:BoolToVisibilityConverter  x:Key="BoolToVis"/>
-
-        <Style x:Key="SectionHeader" TargetType="TextBlock">
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="FontSize"   Value="12"/>
-            <Setter Property="Margin"     Value="0,10,0,4"/>
-            <Setter Property="Foreground" Value="#2C3E50"/>
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Padding"                  Value="4,3"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-        </Style>
-        <Style x:Key="BrowseButton" TargetType="Button">
-            <Setter Property="Width"  Value="60"/>
-            <Setter Property="Margin" Value="4,0,0,0"/>
-            <Setter Property="Padding" Value="4,2"/>
-        </Style>
-        <Style x:Key="ActionBtn" TargetType="Button">
-            <Setter Property="Padding" Value="14,5"/>
-            <Setter Property="Margin"  Value="0,0,6,0"/>
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
-
-        <!-- 棒グラフ アイテム DataTemplate -->
-        <DataTemplate x:Key="BarTemplate">
-            <Grid Margin="0,2" ToolTip="{Binding Tooltip}">
+        <!-- 横棒グラフ -->
+        <DataTemplate x:Key="BarTemplate" DataType="{x:Type vm:BarItem}">
+            <Grid Margin="0,2" ToolTip="{Binding Tooltip}" Background="Transparent">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="180"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="45"/>
+                    <ColumnDefinition Width="64"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding Label}"
-                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                           FontSize="12" Margin="0,0,6,0"/>
-                <Grid Grid.Column="1" Background="#ECF0F1" Height="18">
-                    <Rectangle HorizontalAlignment="Left" Height="18"
-                               Fill="{Binding Fill}">
-                        <Rectangle.Width>
-                            <MultiBinding>
-                                <MultiBinding.Converter>
-                                    <conv:RatioToWidthConverter/>
-                                </MultiBinding.Converter>
-                                <Binding Path="Ratio"/>
-                                <Binding RelativeSource="{RelativeSource AncestorType=Grid}"
-                                         Path="ActualWidth"/>
-                            </MultiBinding>
-                        </Rectangle.Width>
-                    </Rectangle>
-                </Grid>
-                <TextBlock Grid.Column="2" Text="{Binding Value}"
-                           VerticalAlignment="Center" HorizontalAlignment="Right"
-                           FontSize="11" Foreground="#555" Margin="4,0,0,0"/>
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <Border Grid.Column="1" Background="#EEF2F7" Height="16" CornerRadius="3">
+                    <Border Background="{Binding Fill}" CornerRadius="3" RenderTransformOrigin="0,0.5">
+                        <Border.RenderTransform>
+                            <ScaleTransform ScaleX="{Binding Ratio}"/>
+                        </Border.RenderTransform>
+                    </Border>
+                </Border>
+                <TextBlock Grid.Column="2" Text="{Binding Value, StringFormat={}{0:N0}}" HorizontalAlignment="Right"
+                           VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
             </Grid>
         </DataTemplate>
+
+        <!-- 縦棒グラフ（時間帯・曜日） -->
+        <DataTemplate x:Key="ColumnTemplate" DataType="{x:Type vm:BarItem}">
+            <StackPanel Width="34" ToolTip="{Binding Tooltip}" Background="Transparent">
+                <Grid Height="110">
+                    <Border Background="{Binding Fill}" CornerRadius="3,3,0,0" Margin="4,0" RenderTransformOrigin="0.5,1">
+                        <Border.RenderTransform>
+                            <ScaleTransform ScaleY="{Binding Ratio}"/>
+                        </Border.RenderTransform>
+                    </Border>
+                </Grid>
+                <TextBlock Text="{Binding Label}" FontSize="10" HorizontalAlignment="Center" Margin="0,3,0,0"
+                           Foreground="{StaticResource MutedBrush}"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <ItemsPanelTemplate x:Key="HorizontalPanel">
+            <StackPanel Orientation="Horizontal"/>
+        </ItemsPanelTemplate>
+
+        <!-- KPI タイル -->
+        <Style x:Key="Tile" TargetType="Border">
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="12,10"/>
+        </Style>
+        <Style x:Key="TileValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="TileLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#E2E8F0"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- 集計バーの数字 -->
+        <Style x:Key="SummaryLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="SummaryValue" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Margin" Value="0,0,18,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ChartCard" TargetType="Border">
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="14,4,14,12"/>
+            <Setter Property="Margin" Value="4"/>
+        </Style>
     </Window.Resources>
 
-    <DockPanel Margin="8">
+    <DockPanel Margin="10">
 
-        <!-- ===== 設定パネル ===== -->
-        <Border DockPanel.Dock="Top"
-                BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="4"
-                Padding="10,8" Margin="0,0,0,6" Background="#F8F9FA">
+        <!-- ======================= 設定 ======================= -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,0,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0">
+                <Grid IsEnabled="{Binding IsIdle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
                     <!-- 入力 -->
-                    <Grid Margin="0,2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="80"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="入力:" VerticalAlignment="Center"/>
-                        <TextBox   Grid.Column="1" Text="{Binding InputDirectory, UpdateSourceTrigger=PropertyChanged}"/>
-                        <Button    Grid.Column="2" Style="{StaticResource BrowseButton}" Content="参照..."
-                                   Command="{Binding BrowseInputCommand}" IsEnabled="{Binding IsIdle}"/>
-                    </Grid>
+                    <TextBlock Grid.Row="0" Text="整理する写真" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" Margin="0,2" Tag="Input" AllowDrop="True"
+                             Text="{Binding InputDirectory, UpdateSourceTrigger=LostFocus}"
+                             ToolTip="写真が入っているフォルダ（サブフォルダも含めて探します）。フォルダをドラッグ＆ドロップしても指定できます。"/>
+                    <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal">
+                        <Button Content="参照..." Style="{StaticResource SmallButton}" Command="{Binding BrowseInputCommand}"/>
+                        <Button Content="開く" Style="{StaticResource SmallButton}" Command="{Binding OpenInputCommand}"/>
+                    </StackPanel>
+
                     <!-- 出力 -->
-                    <Grid Margin="0,2">
+                    <TextBlock Grid.Row="1" Text="保存先" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" Margin="0,2" Tag="Output" AllowDrop="True"
+                             Text="{Binding OutputDirectory, UpdateSourceTrigger=LostFocus}"
+                             ToolTip="整理したファイルを置くフォルダ（DRY_RUN では空でも構いません）"/>
+                    <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal">
+                        <Button Content="参照..." Style="{StaticResource SmallButton}" Command="{Binding BrowseOutputCommand}"/>
+                        <Button Content="開く" Style="{StaticResource SmallButton}" Command="{Binding OpenOutputCommand}"/>
+                    </StackPanel>
+
+                    <!-- 重複の退避先 -->
+                    <TextBlock Grid.Row="2" Text="重複の退避先" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" Margin="0,2" Tag="Trash" AllowDrop="True"
+                             Text="{Binding TrashDirectory, UpdateSourceTrigger=LostFocus}"
+                             ToolTip="中身がまったく同じファイルが見つかったとき、余分な方を移すフォルダ。空なら元の場所に残します。"/>
+                    <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal">
+                        <Button Content="参照..." Style="{StaticResource SmallButton}" Command="{Binding BrowseTrashCommand}"/>
+                        <Button Content="開く" Style="{StaticResource SmallButton}" Visibility="Hidden"/>
+                    </StackPanel>
+
+                    <!-- フォルダ構成・ファイル名 -->
+                    <TextBlock Grid.Row="3" Text="フォルダ構成" Style="{StaticResource FieldLabel}"/>
+                    <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,2">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="80"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="3*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="2*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="出力:" VerticalAlignment="Center"/>
-                        <TextBox   Grid.Column="1" Text="{Binding OutputDirectory, UpdateSourceTrigger=PropertyChanged}"/>
-                        <Button    Grid.Column="2" Style="{StaticResource BrowseButton}" Content="参照..."
-                                   Command="{Binding BrowseOutputCommand}" IsEnabled="{Binding IsIdle}"/>
+                        <ComboBox IsEditable="True" ItemsSource="{Binding FolderPresets}" FontFamily="Consolas, Yu Gothic UI"
+                                  Text="{Binding FolderTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                  ToolTip="{}{yyyy}/{mm}/{dd}/{camera} のように / で区切ります。一覧から選ぶこともできます。"/>
+                        <TextBlock Grid.Column="1" Text="ファイル名" Style="{StaticResource FieldLabel}" Margin="14,0,8,0"/>
+                        <ComboBox Grid.Column="2" IsEditable="True" ItemsSource="{Binding FileNamePresets}" FontFamily="Consolas, Yu Gothic UI"
+                                  Text="{Binding FileNameTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                  ToolTip="空欄なら元のファイル名のまま。拡張子は自動で付きます。"/>
                     </Grid>
-                    <!-- ゴミ箱 -->
-                    <Grid Margin="0,2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="80"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="ゴミ箱:" VerticalAlignment="Center"/>
-                        <TextBox   Grid.Column="1" Text="{Binding TrashDirectory, UpdateSourceTrigger=PropertyChanged}"
-                                   ToolTip="重複ファイルの移動先（空なら論理削除スキップ）"/>
-                        <Button    Grid.Column="2" Style="{StaticResource BrowseButton}" Content="参照..."
-                                   Command="{Binding BrowseTrashCommand}" IsEnabled="{Binding IsIdle}"/>
-                    </Grid>
-                    <!-- テンプレート + モード + 並列数 -->
-                    <Grid Margin="0,2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="80"/><ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="50"/><ColumnDefinition Width="160"/>
-                            <ColumnDefinition Width="50"/><ColumnDefinition Width="50"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="テンプレ:" VerticalAlignment="Center"/>
-                        <TextBox   Grid.Column="1" Text="{Binding FolderTemplate, UpdateSourceTrigger=PropertyChanged}"
-                                   ToolTip="変数: {yyyy} {mm} {dd} {camera} {lens} {type} {city} {country} {region}"/>
-                        <TextBlock Grid.Column="2" Text="モード:" VerticalAlignment="Center" Margin="8,0,4,0"/>
-                        <ComboBox  Grid.Column="3" ItemsSource="{Binding OperationModes}"
-                                   SelectedItem="{Binding OperationMode}" IsEnabled="{Binding IsIdle}">
+
+                    <!-- プレビュー -->
+                    <StackPanel Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,1,0,4">
+                        <TextBlock Text="{Binding TemplatePreview}" Style="{StaticResource Hint}" FontFamily="Consolas, Yu Gothic UI"
+                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                        <TextBlock Text="{Binding TemplateProblem}" Foreground="#DC2626" FontSize="11"
+                                   Visibility="{Binding TemplateProblem, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+
+                    <!-- モード・並列数・日付 -->
+                    <TextBlock Grid.Row="5" Text="モード" Style="{StaticResource FieldLabel}"/>
+                    <WrapPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,2">
+                        <ComboBox Width="250" ItemsSource="{Binding OperationModes}" SelectedItem="{Binding OperationMode}">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Converter={StaticResource ModeDisplay}}"/>
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
-                        <TextBlock Grid.Column="4" Text="並列:" VerticalAlignment="Center" Margin="8,0,4,0"/>
-                        <TextBox   Grid.Column="5" Text="{Binding MaxParallelism, UpdateSourceTrigger=PropertyChanged}"
-                                   IsEnabled="{Binding IsIdle}"/>
-                    </Grid>
-                    <!-- 日付フィルタ -->
-                    <Grid Margin="0,2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="80"/><ColumnDefinition Width="130"/>
-                            <ColumnDefinition Width="20"/><ColumnDefinition Width="130"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="日付絞込:" VerticalAlignment="Center"/>
-                        <DatePicker Grid.Column="1" SelectedDate="{Binding FilterStartDate}"
-                                    IsEnabled="{Binding IsIdle}" ToolTip="開始日（含む）"/>
-                        <TextBlock Grid.Column="2" Text="〜" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        <DatePicker Grid.Column="3" SelectedDate="{Binding FilterEndDate}"
-                                    IsEnabled="{Binding IsIdle}" ToolTip="終了日（含む）"/>
-                        <Button Grid.Column="4" Content="クリア" Margin="6,0,0,0" Padding="6,2"
-                                Command="{Binding ClearFilterCommand}"
+                        <TextBlock Text="同時処理数" Style="{StaticResource FieldLabel}" Margin="18,0,6,0"/>
+                        <Slider Width="110" Minimum="1" Maximum="16" IsSnapToTickEnabled="True" TickFrequency="1"
+                                VerticalAlignment="Center" Value="{Binding MaxParallelism}"
+                                ToolTip="多いほど速くなりますが、HDD や NAS では 2〜4 程度がおすすめです"/>
+                        <TextBlock Text="{Binding MaxParallelism}" Width="24" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                        <TextBlock Text="撮影日" Style="{StaticResource FieldLabel}" Margin="14,0,6,0"/>
+                        <DatePicker Width="120" SelectedDate="{Binding FilterStartDate}" ToolTip="この日以降に撮影した写真だけを対象にする"/>
+                        <TextBlock Text="〜" VerticalAlignment="Center" Margin="4,0"/>
+                        <DatePicker Width="120" SelectedDate="{Binding FilterEndDate}" ToolTip="この日までに撮影した写真だけを対象にする"/>
+                        <Button Content="解除" Style="{StaticResource SmallButton}" MinWidth="40" Command="{Binding ClearFilterCommand}"
                                 Visibility="{Binding HasDateFilter, Converter={StaticResource BoolToVis}}"/>
-                    </Grid>
-                </StackPanel>
+                    </WrapPanel>
+
+                    <!-- 詳細オプション -->
+                    <Expander x:Name="OptionsExpander" Grid.Row="6" Grid.ColumnSpan="3" Header="詳細オプション" Margin="0,6,0,0">
+                        <StackPanel Margin="4,6,0,0">
+                            <WrapPanel>
+                                <CheckBox Content="動画（mp4 / mov など）も整理する" IsChecked="{Binding IncludeVideos}"/>
+                                <CheckBox Content="XMP サイドカーも一緒に動かす" IsChecked="{Binding IncludeSidecars}"
+                                          ToolTip="Lightroom などが作る IMG_0001.xmp を写真と同じフォルダへコピー/移動します"/>
+                                <CheckBox Content="コピー後に中身を検証する" IsChecked="{Binding VerifyCopies}"
+                                          ToolTip="書き込んだファイルを読み直して、元と同じかを確認します（少し遅くなりますが安全です）"/>
+                                <CheckBox Content="重複を探す" IsChecked="{Binding DetectDuplicates}"/>
+                                <CheckBox Content="前回の読み取り結果を再利用（2回目以降が速くなる）" IsChecked="{Binding UseMetadataCache}"/>
+                            </WrapPanel>
+                            <WrapPanel Margin="0,2,0,0">
+                                <CheckBox Content="撮影日がないファイルは次のフォルダにまとめる:" IsChecked="{Binding UseNoDateFolder}" Margin="0,3,6,3"/>
+                                <TextBox Width="120" Text="{Binding NoDateFolderName, UpdateSourceTrigger=LostFocus}" IsEnabled="{Binding UseNoDateFolder}"/>
+                                <CheckBox Content="詳細ログ（調査用）" IsChecked="{Binding VerboseLog}" Margin="18,3,16,3"/>
+                            </WrapPanel>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="exiftool の場所" Style="{StaticResource FieldLabel}"/>
+                                <TextBox Grid.Column="1" Text="{Binding ExifToolPath, UpdateSourceTrigger=LostFocus}"
+                                         ToolTip="空欄なら Resources フォルダ → PATH の順に自動で探します"/>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                    <Button Content="参照..." Style="{StaticResource SmallButton}" Command="{Binding BrowseExifToolCommand}"/>
+                                    <Button Content="再確認" Style="{StaticResource SmallButton}" Command="{Binding CheckExifToolCommand}"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Margin="0,3,0,0" FontSize="11" TextWrapping="Wrap" Text="{Binding ExifToolStatus}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#B45309"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsExifToolOk}" Value="True">
+                                                <Setter Property="Foreground" Value="#15803D"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <WrapPanel Margin="0,6,0,0">
+                                <Button Content="カメラ名・レンズ名の置き換え設定を開く" Style="{StaticResource LinkButton}" Command="{Binding OpenMappingsCommand}" Margin="0,0,18,0"/>
+                                <Button Content="設定・データの保存フォルダを開く" Style="{StaticResource LinkButton}" Command="{Binding OpenDataFolderCommand}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Expander>
+                </Grid>
 
                 <!-- 操作ボタン -->
-                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                    <Button Style="{StaticResource ActionBtn}" Content="▶ 実行"
-                            Command="{Binding StartCommand}"
-                            Background="#27AE60" Foreground="White" FontWeight="Bold"/>
-                    <Button Style="{StaticResource ActionBtn}" Content="■ 停止"
-                            Command="{Binding StopCommand}"
-                            Background="#E74C3C" Foreground="White" Margin="0,4,6,0"/>
-                    <Button Style="{StaticResource ActionBtn}" Content="名前設定..."
-                            Command="{Binding OpenMappingsCommand}" Margin="0,4,6,0"
-                            ToolTip="カメラ・レンズ表示名のマッピングをメモ帳で編集"/>
+                <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Top">
+                    <Button Command="{Binding StartCommand}" Style="{StaticResource BigButton}" FontWeight="Bold"
+                            Background="#16A34A" Foreground="White" BorderBrush="#15803D" ToolTip="F5">
+                        <TextBlock Text="{Binding StartButtonText}"/>
+                    </Button>
+                    <Button Content="■ 停止" Command="{Binding StopCommand}" Style="{StaticResource BigButton}"
+                            Background="#FEE2E2" BorderBrush="#FCA5A5" ToolTip="Esc"/>
+                    <Button Content="↶ 直前の実行を元に戻す" Command="{Binding UndoLastRunCommand}" Style="{StaticResource BigButton}"
+                            ToolTip="直近の COPY / MOVE を取り消します（古い実行は「統計」タブの履歴から）"/>
+                    <TextBlock Text="{Binding AppVersion}" Style="{StaticResource Hint}" HorizontalAlignment="Right" Margin="0,4,0,0"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- ===== プログレスバー ===== -->
-        <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,5"
-                BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="4" Background="#F8F9FA">
+        <!-- ======================= 進捗 ======================= -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1" CornerRadius="8" Padding="14,8" Margin="0,0,0,8">
             <StackPanel>
                 <Grid>
-                    <TextBlock Text="{Binding ProgressMessage}" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock HorizontalAlignment="Right"
-                               Text="{Binding ProgressPercent, StringFormat={}{0:F0}%}"/>
-                </Grid>
-                <ProgressBar Height="8" Margin="0,3,0,0"
-                             Maximum="{Binding ProgressTotal, Mode=OneWay}"
-                             Value="{Binding ProgressValue, Mode=OneWay}"/>
-                <TextBlock FontSize="11" Foreground="#7F8C8D"
-                           Text="{Binding CurrentFile}" TextTrimming="CharacterEllipsis"/>
-            </StackPanel>
-        </Border>
-
-        <!-- ===== サマリーバー ===== -->
-        <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,4"
-                Background="#ECF0F1" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="4"
-                Visibility="{Binding IsIdle, Converter={StaticResource BoolToVis}}">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="スキャン: " FontWeight="Bold"/>
-                <TextBlock Text="{Binding SummaryScanned}"    Margin="0,0,14,0"/>
-                <TextBlock Text="処理完了: " FontWeight="Bold"/>
-                <TextBlock Text="{Binding SummaryProcessed}"  Foreground="#27AE60" Margin="0,0,14,0"/>
-                <TextBlock Text="重複: "    FontWeight="Bold"/>
-                <TextBlock Text="{Binding SummaryDuplicates}" Foreground="#E67E22" Margin="0,0,14,0"/>
-                <TextBlock Text="エラー: "  FontWeight="Bold"/>
-                <TextBlock Text="{Binding SummaryErrors}"     Foreground="#E74C3C"/>
-            </StackPanel>
-        </Border>
-
-        <!-- ===== タブ ===== -->
-        <TabControl>
-
-            <!-- ログ -->
-            <TabItem Header="実行ログ">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <ListBox x:Name="LogListBox" Grid.Row="0"
-                             ItemsSource="{Binding LogEntries}"
-                             FontFamily="Consolas, Courier New" FontSize="12"
-                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                             VirtualizingPanel.IsVirtualizing="True"
-                             VirtualizingPanel.VirtualizationMode="Recycling">
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
-                                <Setter Property="Padding" Value="4,1"/>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                    </ListBox>
-                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
-                        <Button Content="ログ保存" Command="{Binding SaveLogCommand}" Padding="8,3" Margin="0,0,6,0"/>
-                        <Button Content="クリア"   Command="{Binding ClearLogCommand}" Padding="8,3"/>
+                    <TextBlock Text="{Binding ProgressMessage}" TextTrimming="CharacterEllipsis" Margin="0,0,260,0" FontWeight="SemiBold"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="{Binding EtaText}" Style="{StaticResource Hint}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource Hint}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ProgressPercentText}" FontWeight="Bold" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
+                <ProgressBar Height="8" Margin="0,6,0,4" Foreground="{StaticResource AccentBrush}"
+                             IsIndeterminate="{Binding IsIndeterminate, Mode=OneWay}"
+                             Maximum="{Binding ProgressTotal, Mode=OneWay}"
+                             Value="{Binding ProgressValue, Mode=OneWay}"/>
+                <TextBlock Text="{Binding CurrentFile}" Style="{StaticResource Hint}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+
+                <!-- 集計 -->
+                <WrapPanel Margin="0,6,0,0">
+                    <TextBlock Text="見つかった" Style="{StaticResource SummaryLabel}"/>
+                    <TextBlock Text="{Binding SummaryScanned, StringFormat={}{0:N0}}" Style="{StaticResource SummaryValue}"/>
+                    <TextBlock Text="{Binding ProcessedLabel}" Style="{StaticResource SummaryLabel}"/>
+                    <TextBlock Text="{Binding SummaryProcessed, StringFormat={}{0:N0}}" Style="{StaticResource SummaryValue}" Foreground="#15803D"/>
+                    <TextBlock Text="スキップ" Style="{StaticResource SummaryLabel}"/>
+                    <TextBlock Text="{Binding SummarySkipped, StringFormat={}{0:N0}}" Style="{StaticResource SummaryValue}" Foreground="#0369A1"/>
+                    <TextBlock Text="重複" Style="{StaticResource SummaryLabel}"/>
+                    <TextBlock Text="{Binding SummaryDuplicates, StringFormat={}{0:N0}}" Style="{StaticResource SummaryValue}" Foreground="#C2410C"/>
+                    <TextBlock Text="対象外" Style="{StaticResource SummaryLabel}"/>
+                    <TextBlock Text="{Binding SummaryFiltered, StringFormat={}{0:N0}}" Style="{StaticResource SummaryValue}" Foreground="#475569"/>
+                    <TextBlock Text="エラー" Style="{StaticResource SummaryLabel}"/>
+                    <TextBlock Text="{Binding SummaryErrors, StringFormat={}{0:N0}}" Style="{StaticResource SummaryValue}" Foreground="#DC2626"/>
+                    <TextBlock Text="{Binding LastRunText}" Style="{StaticResource Hint}" VerticalAlignment="Center"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- ======================= ステータスバー ======================= -->
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource Hint}" Margin="4,6,0,0"
+                   Visibility="{Binding StatusMessage, Converter={StaticResource BoolToVis}}"/>
+
+        <!-- ======================= タブ ======================= -->
+        <TabControl x:Name="MainTabs" Padding="8">
+
+            <!-- 実行ログ -->
+            <TabItem Header="  実行ログ  ">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" LastChildFill="False">
+                        <TextBlock Text="表示" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox Width="130" ItemsSource="{Binding LogFilters}" DisplayMemberPath="Value" SelectedValuePath="Key"
+                                  SelectedValue="{Binding LogFilterLevel}"/>
+                        <TextBlock Text="検索" Style="{StaticResource FieldLabel}" Margin="14,0,8,0"/>
+                        <TextBox Width="220" Text="{Binding LogSearch, UpdateSourceTrigger=PropertyChanged, Delay=250}"/>
+                        <CheckBox Content="自動スクロール" IsChecked="{Binding AutoScroll}" Margin="14,0,0,0"/>
+                        <Button DockPanel.Dock="Right" Content="クリア" Style="{StaticResource SmallButton}" Command="{Binding ClearLogCommand}"/>
+                        <Button DockPanel.Dock="Right" Content="ログを保存 (Ctrl+S)" Style="{StaticResource SmallButton}" Command="{Binding SaveLogCommand}"/>
+                    </DockPanel>
+                    <ListBox x:Name="LogListBox" ItemsSource="{Binding LogView}"
+                             FontFamily="Cascadia Mono, Consolas, MS Gothic" FontSize="12"
+                             BorderBrush="{StaticResource BorderBrush}"
+                             VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="4,0"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Time, StringFormat=HH:mm:ss}" Foreground="#94A3B8" Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding LevelTag}" Width="44" Foreground="{Binding Level, Converter={StaticResource LogLevelToBrush}}"/>
+                                    <TextBlock Text="{Binding Message}" Foreground="{Binding Level, Converter={StaticResource LogLevelToBrush}}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </TabItem>
+
+            <!-- ファイル一覧 -->
+            <TabItem Header="  ファイル一覧  ">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" LastChildFill="False">
+                        <TextBlock Text="状態" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox Width="170" ItemsSource="{Binding AssetFilters}" SelectedItem="{Binding AssetFilter}"/>
+                        <TextBlock Text="検索" Style="{StaticResource FieldLabel}" Margin="14,0,8,0"/>
+                        <TextBox Width="240" Text="{Binding AssetSearch, UpdateSourceTrigger=PropertyChanged, Delay=300}"
+                                 ToolTip="ファイル名・フォルダ・カメラ・レンズ・メッセージで絞り込み"/>
+                        <TextBlock Text="{Binding AssetCountText}" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="14,0,0,0"/>
+                        <Button DockPanel.Dock="Right" Content="CSV で保存 (Ctrl+E)" Style="{StaticResource SmallButton}" Command="{Binding ExportCsvCommand}"/>
+                    </DockPanel>
+                    <DataGrid x:Name="AssetsGrid" ItemsSource="{Binding AssetsView}" AutoGenerateColumns="False" IsReadOnly="True"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#EEF2F7"
+                              BorderBrush="{StaticResource BorderBrush}" SelectionMode="Single"
+                              EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling" CanUserAddRows="False">
+                        <DataGrid.InputBindings>
+                            <MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenFileCommand}"
+                                          CommandParameter="{Binding SelectedItem, ElementName=AssetsGrid}"/>
+                        </DataGrid.InputBindings>
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="ファイルを開く" Command="{Binding OpenFileCommand}"
+                                          CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                <MenuItem Header="元の場所をエクスプローラーで表示" Command="{Binding ShowInExplorerCommand}"
+                                          CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                <MenuItem Header="出力先をエクスプローラーで表示" Command="{Binding ShowOutputInExplorerCommand}"
+                                          CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="Background" Value="{Binding Status, Converter={StaticResource StatusToBrush}}"/>
+                                <Setter Property="ToolTip" Value="{Binding Message}"/>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="状態" Binding="{Binding StatusDisplay}" Width="150"/>
+                            <DataGridTextColumn Header="ファイル名" Binding="{Binding FileName}" Width="170"/>
+                            <DataGridTextColumn Header="撮影日時" Binding="{Binding ShotAtDisplay}" Width="150" SortMemberPath="ShotAt"/>
+                            <DataGridTextColumn Header="カメラ" Binding="{Binding Camera}" Width="130"/>
+                            <DataGridTextColumn Header="レンズ" Binding="{Binding Lens}" Width="130"/>
+                            <DataGridTextColumn Header="サイズ" Binding="{Binding FileSizeText}" Width="75" SortMemberPath="FileSize"/>
+                            <DataGridTextColumn Header="場所" Binding="{Binding Location}" Width="110"/>
+                            <DataGridTextColumn Header="出力先" Binding="{Binding OutputPath}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
             </TabItem>
 
             <!-- 統計 -->
-            <TabItem Header="統計">
+            <TabItem Header="  統計  ">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="10">
+                    <StackPanel x:Name="StatsPanel" Margin="4">
+                        <TextBlock Text="まだ統計がありません。DRY_RUN でも統計は作成されます。" Style="{StaticResource Hint}" Margin="4,4,0,8"
+                                   Visibility="{Binding Statistics.HasData, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"/>
 
-                        <!-- 概要数値 -->
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="ファイル概要"/>
-                        <UniformGrid Rows="1" Columns="5" Margin="0,0,0,10">
-                            <Border Margin="3" Background="#3498DB" CornerRadius="6" Padding="10,8">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding Statistics.TotalFiles}" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="合計" Foreground="White" HorizontalAlignment="Center"/>
+                        <UniformGrid Rows="1" Columns="6">
+                            <Border Style="{StaticResource Tile}" Background="#2563EB">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Statistics.TotalFiles, StringFormat={}{0:N0}}" Style="{StaticResource TileValue}"/>
+                                    <TextBlock Text="{Binding Statistics.TotalSize, StringFormat=ファイル（{0}）}" Style="{StaticResource TileLabel}"/>
                                 </StackPanel>
                             </Border>
-                            <Border Margin="3" Background="#27AE60" CornerRadius="6" Padding="10,8">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding Statistics.JpegCount}" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="JPEG" Foreground="White" HorizontalAlignment="Center"/>
+                            <Border Style="{StaticResource Tile}" Background="#16A34A">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Statistics.JpegCount, StringFormat={}{0:N0}}" Style="{StaticResource TileValue}"/>
+                                    <TextBlock Text="JPEG" Style="{StaticResource TileLabel}"/>
                                 </StackPanel>
                             </Border>
-                            <Border Margin="3" Background="#E67E22" CornerRadius="6" Padding="10,8">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding Statistics.RawCount}" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="RAW" Foreground="White" HorizontalAlignment="Center"/>
+                            <Border Style="{StaticResource Tile}" Background="#EA580C">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Statistics.RawCount, StringFormat={}{0:N0}}" Style="{StaticResource TileValue}"/>
+                                    <TextBlock Text="RAW" Style="{StaticResource TileLabel}"/>
                                 </StackPanel>
                             </Border>
-                            <Border Margin="3" Background="#8E44AD" CornerRadius="6" Padding="10,8">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding Statistics.WithGps}" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="GPS付き" Foreground="White" HorizontalAlignment="Center"/>
+                            <Border Style="{StaticResource Tile}" Background="#0891B2">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Statistics.HeifVideoCount, StringFormat={}{0:N0}}" Style="{StaticResource TileValue}"/>
+                                    <TextBlock Text="HEIF・動画" Style="{StaticResource TileLabel}"/>
                                 </StackPanel>
                             </Border>
-                            <Border Margin="3" Background="#2C3E50" CornerRadius="6" Padding="10,8">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding Statistics.DateRange}" FontSize="13" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
-                                    <TextBlock Text="撮影期間" Foreground="White" HorizontalAlignment="Center"/>
+                            <Border Style="{StaticResource Tile}" Background="#7C3AED">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Statistics.WithGps, StringFormat={}{0:N0}}" Style="{StaticResource TileValue}"/>
+                                    <TextBlock Text="位置情報あり" Style="{StaticResource TileLabel}"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Tile}" Background="#1E293B">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Statistics.DateRange}" Style="{StaticResource TileValue}" FontSize="14"/>
+                                    <TextBlock Text="撮影期間" Style="{StaticResource TileLabel}"/>
                                 </StackPanel>
                             </Border>
                         </UniformGrid>
 
-                        <!-- カメラ別 -->
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="カメラ別"/>
-                        <ItemsControl ItemsSource="{Binding Statistics.CameraChart}"
-                                      ItemTemplate="{StaticResource BarTemplate}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <Border Style="{StaticResource ChartCard}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource SectionHeader}" Text="カメラ別"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.CameraChart}" ItemTemplate="{StaticResource BarTemplate}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource ChartCard}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource SectionHeader}" Text="レンズ別"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.LensChart}" ItemTemplate="{StaticResource BarTemplate}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource ChartCard}" Visibility="{Binding Statistics.HasLocations, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource SectionHeader}" Text="撮影地"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.LocationChart}" ItemTemplate="{StaticResource BarTemplate}"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <Border Style="{StaticResource ChartCard}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource SectionHeader}" Text="撮影した時間帯"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.HourChart}" ItemTemplate="{StaticResource ColumnTemplate}"
+                                                      ItemsPanel="{StaticResource HorizontalPanel}" HorizontalAlignment="Left">
+                                            <ItemsControl.LayoutTransform>
+                                                <ScaleTransform ScaleX="0.62" ScaleY="1"/>
+                                            </ItemsControl.LayoutTransform>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource ChartCard}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource SectionHeader}" Text="曜日"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.WeekdayChart}" ItemTemplate="{StaticResource ColumnTemplate}"
+                                                      ItemsPanel="{StaticResource HorizontalPanel}" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource ChartCard}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource SectionHeader}" Text="形式別"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.ExtChart}" ItemTemplate="{StaticResource BarTemplate}"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
 
-                        <!-- 拡張子別 -->
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="拡張子別"/>
-                        <ItemsControl ItemsSource="{Binding Statistics.ExtChart}"
-                                      ItemTemplate="{StaticResource BarTemplate}"/>
+                        <Border Style="{StaticResource ChartCard}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionHeader}" Text="月別の撮影枚数"/>
+                                <ItemsControl ItemsSource="{Binding Statistics.MonthlyChart}" ItemTemplate="{StaticResource BarTemplate}"/>
+                            </StackPanel>
+                        </Border>
 
-                        <!-- 月別 -->
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="月別撮影数"/>
-                        <ItemsControl ItemsSource="{Binding Statistics.MonthlyChart}"
-                                      ItemTemplate="{StaticResource BarTemplate}"/>
+                        <Border Style="{StaticResource ChartCard}" Visibility="{Binding Statistics.HasCameraTotals, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionHeader}" Text="これまでに整理したカメラ（COPY / MOVE の累計）"/>
+                                <ItemsControl ItemsSource="{Binding Statistics.CameraTotalsChart}" ItemTemplate="{StaticResource BarTemplate}"/>
+                            </StackPanel>
+                        </Border>
 
-                        <!-- 実行履歴 -->
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="実行履歴"/>
-                        <DataGrid ItemsSource="{Binding Statistics.History}"
-                                  AutoGenerateColumns="False" IsReadOnly="True"
-                                  MaxHeight="200" Margin="0,0,0,10"
-                                  GridLinesVisibility="Horizontal"
-                                  BorderBrush="#BDC3C7" BorderThickness="1">
+                        <DockPanel Margin="4,10,4,4">
+                            <TextBlock Style="{StaticResource SectionHeader}" Text="実行履歴" Margin="0"/>
+                            <Button DockPanel.Dock="Right" HorizontalAlignment="Right" Content="履歴を削除" Style="{StaticResource SmallButton}"
+                                    Command="{Binding ClearHistoryCommand}"/>
+                        </DockPanel>
+                        <DataGrid ItemsSource="{Binding Statistics.History}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="300"
+                                  HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#EEF2F7"
+                                  BorderBrush="{StaticResource BorderBrush}" Margin="4,0,4,8" CanUserAddRows="False">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="実行日時"   Binding="{Binding RunAt}"    Width="130"/>
-                                <DataGridTextColumn Header="合計"       Binding="{Binding TotalFiles}" Width="55"/>
-                                <DataGridTextColumn Header="JPEG"       Binding="{Binding JpegCount}"  Width="55"/>
-                                <DataGridTextColumn Header="RAW"        Binding="{Binding RawCount}"   Width="55"/>
-                                <DataGridTextColumn Header="GPS付"      Binding="{Binding WithGps}"    Width="55"/>
-                                <DataGridTextColumn Header="処理済"     Binding="{Binding Processed}"  Width="55"/>
-                                <DataGridTextColumn Header="重複"       Binding="{Binding Duplicates}" Width="55"/>
-                                <DataGridTextColumn Header="エラー"     Binding="{Binding Errors}"     Width="55"/>
-                                <DataGridTextColumn Header="入力フォルダ" Binding="{Binding Input}"   Width="*"/>
+                                <DataGridTextColumn Header="日時" Binding="{Binding RunAt}" Width="120"/>
+                                <DataGridTextColumn Header="モード" Binding="{Binding Mode}" Width="70"/>
+                                <DataGridTextColumn Header="ファイル" Binding="{Binding TotalFiles, StringFormat={}{0:N0}}" Width="65"/>
+                                <DataGridTextColumn Header="処理" Binding="{Binding Processed, StringFormat={}{0:N0}}" Width="60"/>
+                                <DataGridTextColumn Header="スキップ" Binding="{Binding Skipped, StringFormat={}{0:N0}}" Width="60"/>
+                                <DataGridTextColumn Header="重複" Binding="{Binding Duplicates, StringFormat={}{0:N0}}" Width="55"/>
+                                <DataGridTextColumn Header="エラー" Binding="{Binding Errors, StringFormat={}{0:N0}}" Width="55"/>
+                                <DataGridTextColumn Header="時間" Binding="{Binding Elapsed}" Width="75"/>
+                                <DataGridTextColumn Header="状態" Binding="{Binding State}" Width="150"/>
+                                <DataGridTemplateColumn Header="" Width="90">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="元に戻す" Margin="2" Padding="6,1"
+                                                    Visibility="{Binding CanUndo, Converter={StaticResource BoolToVis}}"
+                                                    Command="{Binding DataContext.UndoRunCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="入力フォルダ" Binding="{Binding Input}" Width="*"/>
                             </DataGrid.Columns>
                         </DataGrid>
-
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
             <!-- 重複 -->
-            <TabItem Header="重複ファイル">
-                <Grid>
-                    <TextBlock Text="重複ファイルはありません" VerticalAlignment="Center"
-                               HorizontalAlignment="Center" Foreground="#7F8C8D"
-                               Visibility="{Binding DuplicateGroups.Count,
-                                   Converter={StaticResource BoolToVis},
-                                   ConverterParameter=Invert}"/>
-                    <ListBox ItemsSource="{Binding DuplicateGroups}"
-                             Visibility="{Binding DuplicateGroups.Count, Converter={StaticResource BoolToVis}}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Expander Header="{Binding Summary}" Margin="0,2">
-                                    <ItemsControl ItemsSource="{Binding Files}" Margin="20,0,0,0">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
-                                                           TextWrapping="Wrap" Margin="0,1"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </Expander>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </Grid>
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="  重複  "/>
+                        <Border Background="#EA580C" CornerRadius="8" Padding="6,0" Margin="2,0,4,0"
+                                Visibility="{Binding DuplicateGroups.Count, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding DuplicateGroups.Count}" Foreground="White" FontSize="11"/>
+                        </Border>
+                    </StackPanel>
+                </TabItem.Header>
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" LastChildFill="False">
+                        <TextBlock Text="{Binding DuplicateSummary}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                        <Button DockPanel.Dock="Right" Content="余分な重複をすべてごみ箱へ" Style="{StaticResource SmallButton}"
+                                Command="{Binding RecycleAllDuplicatesCommand}"
+                                ToolTip="各グループで「残す」以外のファイルを Windows のごみ箱へ送ります（ごみ箱から元に戻せます）"/>
+                    </DockPanel>
+                    <Grid>
+                        <TextBlock Text="重複ファイルはありません（実行すると、中身がまったく同じファイルをここに表示します）"
+                                   Style="{StaticResource Hint}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Visibility="{Binding DuplicateGroups.Count, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"/>
+                        <ListBox ItemsSource="{Binding DuplicateGroups}" BorderThickness="0"
+                                 HorizontalContentAlignment="Stretch"
+                                 VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 Visibility="{Binding DuplicateGroups.Count, Converter={StaticResource BoolToVis}}">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Focusable" Value="False"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <ContentPresenter/>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:DuplicateGroupViewModel}">
+                                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                            <ItemsControl ItemsSource="{Binding Files}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type vm:DuplicateFileViewModel}">
+                                                        <Border Width="250" Margin="0,0,8,8" Padding="8" CornerRadius="6" BorderThickness="2">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="BorderBrush" Value="#FDBA74"/>
+                                                                    <Setter Property="Background" Value="#FFF7ED"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsKept}" Value="True">
+                                                                            <Setter Property="BorderBrush" Value="#86EFAC"/>
+                                                                            <Setter Property="Background" Value="#F0FDF4"/>
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding IsRemoved}" Value="True">
+                                                                            <Setter Property="Opacity" Value="0.45"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <StackPanel>
+                                                                <Grid Height="150" Background="#E2E8F0">
+                                                                    <TextBlock Text="プレビューなし" Style="{StaticResource Hint}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    <Image Source="{Binding Thumbnail}" Stretch="Uniform"/>
+                                                                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" CornerRadius="4" Padding="6,1" Background="#C2410C">
+                                                                        <TextBlock Text="{Binding Badge}" Foreground="White" FontWeight="Bold" FontSize="11"/>
+                                                                    </Border>
+                                                                </Grid>
+                                                                <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/>
+                                                                <TextBlock Text="{Binding Folder}" Style="{StaticResource Hint}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Folder}"/>
+                                                                <TextBlock Text="{Binding Details}" Style="{StaticResource Hint}"/>
+                                                                <WrapPanel Margin="0,6,0,0">
+                                                                    <Button Content="場所を開く" Padding="6,1" Margin="0,0,4,0"
+                                                                            Command="{Binding DataContext.ShowInExplorerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                                                    <Button Content="開く" Padding="6,1" Margin="0,0,4,0"
+                                                                            Command="{Binding DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                                                    <Button Content="ごみ箱へ" Padding="6,1"
+                                                                            Visibility="{Binding CanRecycle, Converter={StaticResource BoolToVis}}"
+                                                                            Command="{Binding DataContext.RecycleDuplicateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                                                </WrapPanel>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </DockPanel>
             </TabItem>
 
-            <!-- ヒント -->
-            <TabItem Header="ヒント">
-                <ScrollViewer>
-                    <StackPanel Margin="12">
-                        <TextBlock FontWeight="Bold" FontSize="14" Text="使い方" Margin="0,0,0,8"/>
-                        <TextBlock TextWrapping="Wrap" Margin="0,0,0,6">
-                            1. 入力フォルダに整理したい写真フォルダを指定します。<LineBreak/>
-                            2. 出力フォルダに整理後のファイルを配置するフォルダを指定します。<LineBreak/>
-                            3. テンプレートでフォルダ構造を指定します。<LineBreak/>
-                            4. まず DRY_RUN で実行し、ログを確認してから COPY/MOVE を実行してください。
+            <!-- ヘルプ -->
+            <TabItem Header="  ヘルプ  ">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="8" MaxWidth="980" HorizontalAlignment="Left">
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="使い方" Margin="0,0,0,6" FontSize="15"/>
+                        <TextBlock TextWrapping="Wrap" LineHeight="22">
+                            1. 「整理する写真」に写真が入っているフォルダを指定します（ドラッグ＆ドロップでも OK）。<LineBreak/>
+                            2. 「保存先」に整理後のフォルダを指定し、「フォルダ構成」を選びます。下に完成イメージが表示されます。<LineBreak/>
+                            3. まずは <Bold>DRY_RUN</Bold> で実行し、「ファイル一覧」タブで行き先を確認します（ファイルは一切変更しません）。<LineBreak/>
+                            4. 問題なければ <Bold>COPY</Bold>（元を残す）か <Bold>MOVE</Bold>（移動する）で本番を実行します。<LineBreak/>
+                            5. 間違えたときは「直前の実行を元に戻す」か、「統計」タブの履歴から取り消せます。
                         </TextBlock>
-                        <TextBlock FontWeight="Bold" Text="テンプレート変数:" Margin="0,8,0,4"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{yyyy}        - 撮影年（4桁）"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{mm}          - 撮影月（2桁）"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{dd}          - 撮影日（2桁）"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{camera}      - カメラ名"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{lens}        - レンズ名"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{type}        - ファイル種別（JPEG / RAW）"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{ext}         - 拡張子（jpg / cr2 / nef など）"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{city}        - 都市名（GPS + exiftool 13+）"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{region}      - 都道府県・州"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{country}     - 国名"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{countrycode} - 国コード JP/US など"/>
-                        <TextBlock Margin="0,8,0,4" FontWeight="Bold" Text="テンプレート例:"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{dd}/{camera}"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{yyyy}/{mm}/{dd}/{type}/{camera}"/>
-                        <TextBlock FontFamily="Consolas" Text="{}{country}/{city}/{yyyy}/{mm}/{dd}"/>
-                        <TextBlock FontWeight="Bold" Margin="0,10,0,4" Text="注意事項:"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="#E74C3C">
-                            ・DRY_RUN 以外のモードは元ファイルに変更を加えます。必ず事前にバックアップを取得してください。<LineBreak/>
-                            ・上書きは行いません（同名ファイルは自動リネーム）。
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="テンプレートで使える変数（クリックするとフォルダ構成の末尾に追加）"/>
+                        <ItemsControl ItemsSource="{Binding Variables}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="140"/>
+                                            <ColumnDefinition Width="280"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Content="{Binding Token}" Style="{StaticResource LinkButton}" FontFamily="Consolas"
+                                                Command="{Binding DataContext.InsertVariableCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Description}"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Example, StringFormat=例: {0}}" Foreground="{StaticResource MutedBrush}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="安全のための仕組み"/>
+                        <TextBlock TextWrapping="Wrap" LineHeight="22">
+                            ・既存のファイルを上書きすることはありません。同じ名前で中身が違う場合は IMG_0001_001.JPG のように連番を付けます。<LineBreak/>
+                            ・保存先に中身がまったく同じファイルが既にあればスキップします（何度実行しても増えません）。<LineBreak/>
+                            ・コピーしたファイルは読み直して元と同じかを確認します（詳細オプションで切り替え）。<LineBreak/>
+                            ・別のドライブへの MOVE は「コピー → 確認 → 元を削除」の順で行います。<LineBreak/>
+                            ・すべての操作は記録され、途中で中断しても記録済みの分は元に戻せます。
                         </TextBlock>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="カメラ名・レンズ名の置き換え"/>
+                        <TextBlock TextWrapping="Wrap">
+                            フォルダ名に使うカメラ名やレンズ名は、mappings.json で好きな名前に置き換えられます。
+                            「詳細オプション」→「カメラ名・レンズ名の置き換え設定を開く」で編集し、保存すると次の実行から反映されます。
+                        </TextBlock>
+                        <TextBox IsReadOnly="True" FontFamily="Consolas" Margin="0,6,0,0" Padding="8" Background="#F8FAFC" TextWrapping="Wrap"
+                                 Text="{}{&#x0a;  &quot;Camera&quot;: { &quot;RICOH GR IIIx&quot;: &quot;GR3x&quot;, &quot;ILCE-7M4&quot;: &quot;α7IV&quot; },&#x0a;  &quot;Lens&quot;:   { &quot;FE 24-70mm F2.8 GM II&quot;: &quot;2470GM2&quot; }&#x0a;}"/>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="キーボード"/>
+                        <TextBlock Text="F5: 実行    Esc: 停止    Ctrl+S: ログを保存    Ctrl+E: CSV で保存"/>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="設定・データの保存場所"/>
+                        <Button Content="{Binding DataDirectory}" Style="{StaticResource LinkButton}" HorizontalAlignment="Left"
+                                Command="{Binding OpenDataFolderCommand}"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
-
         </TabControl>
     </DockPanel>
 </Window>

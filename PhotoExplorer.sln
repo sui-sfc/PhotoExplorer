@@ -1,9 +1,13 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhotoExplorer", "PhotoExplorer\PhotoExplorer.csproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhotoExplorer.Core", "PhotoExplorer.Core\PhotoExplorer.Core.csproj", "{DEEC09D9-C42B-4D77-B5F9-BD12847097A7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhotoExplorer.Tests", "PhotoExplorer.Tests\PhotoExplorer.Tests.csproj", "{4C33634D-5491-47AE-98CB-942A93F26C1F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,5 +19,13 @@ Global
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DEEC09D9-C42B-4D77-B5F9-BD12847097A7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DEEC09D9-C42B-4D77-B5F9-BD12847097A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DEEC09D9-C42B-4D77-B5F9-BD12847097A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DEEC09D9-C42B-4D77-B5F9-BD12847097A7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C33634D-5491-47AE-98CB-942A93F26C1F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C33634D-5491-47AE-98CB-942A93F26C1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C33634D-5491-47AE-98CB-942A93F26C1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C33634D-5491-47AE-98CB-942A93F26C1F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

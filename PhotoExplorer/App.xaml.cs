@@ -1,114 +1,114 @@
-using System.IO;
+using System.Text;
 using System.Windows;
+using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoExplorer.Application;
 using PhotoExplorer.Domain.Services;
 using PhotoExplorer.Infrastructure;
 using PhotoExplorer.Presentation.ViewModels;
 using PhotoExplorer.Presentation.Views;
-// PhotoExplorer.Application 名前空間と System.Windows.Application クラスの衝突を回避
-using WpfApplication = System.Windows.Application;
-using MessageBox = System.Windows.MessageBox;
-using MessageBoxButton = System.Windows.MessageBoxButton;
-using MessageBoxImage = System.Windows.MessageBoxImage;
 
 namespace PhotoExplorer;
 
 public partial class App : WpfApplication
 {
-    private IServiceProvider? _serviceProvider;
+    private ServiceProvider? _serviceProvider;
 
-    protected override void OnStartup(System.Windows.StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        // 未処理例外をすべてキャッチしてダイアログ表示
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
-            ShowFatal(args.ExceptionObject?.ToString() ?? "不明なエラー");
-        DispatcherUnhandledException += (_, args) =>
+            ReportFatal(args.ExceptionObject as Exception, "予期しないエラー");
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        TaskScheduler.UnobservedTaskException += (_, args) =>
         {
-            ShowFatal(args.Exception.ToString());
-            args.Handled = true;
+            WriteCrashLog(args.Exception);
+            args.SetObserved();
         };
+
+        // README 用のスクリーンショットを作る: PhotoExplorer.exe --screenshots <出力フォルダ>
+        int shotIndex = Array.IndexOf(e.Args, "--screenshots");
+        string? screenshotDir = shotIndex >= 0 && shotIndex + 1 < e.Args.Length ? e.Args[shotIndex + 1] : null;
+        if (screenshotDir != null)
+            Environment.SetEnvironmentVariable(AppPaths.DataDirEnvironmentVariable,
+                Path.Combine(Path.GetTempPath(), "PhotoExplorerScreenshots", "data"));
 
         try
         {
+            AppPaths.EnsureCreated();
             var services = new ServiceCollection();
             ConfigureServices(services);
             _serviceProvider = services.BuildServiceProvider();
 
-            var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
-            mainWindow.Show();
+            var window = _serviceProvider.GetRequiredService<MainWindow>();
+            MainWindow = window;
+            window.Show();
+
+            if (screenshotDir != null)
+                _ = Presentation.Tools.ScreenshotRunner.RunAsync(this, window,
+                    _serviceProvider.GetRequiredService<MainViewModel>(), screenshotDir);
         }
         catch (Exception ex)
         {
-            ShowFatal(ex.ToString());
+            ReportFatal(ex, "起動に失敗しました");
             Shutdown(1);
         }
     }
 
-    private static void ShowFatal(string message)
-    {
-        MessageBox.Show(
-            $"起動に失敗しました。\n\n{message}",
-            "PhotoExplorer - 起動エラー",
-            MessageBoxButton.OK,
-            MessageBoxImage.Error);
-    }
-
     private static void ConfigureServices(IServiceCollection services)
     {
-        // exiftool のパスを決定（実行ファイルと同階層の Resources フォルダを優先）
-        var appDir = AppContext.BaseDirectory;
-        var exifToolPath = Path.Combine(appDir, "Resources", "exiftool.exe");
-        if (!File.Exists(exifToolPath))
-            exifToolPath = "exiftool.exe"; // PATH から探す
-
-        var appDataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PhotoExplorer");
-        Directory.CreateDirectory(appDataDir);
-
-        var dbPath = Path.Combine(appDataDir, "photo_explorer.db");
-
-        // カスタムマッピング設定を読み込む（なければデフォルトを生成）
-        var mappingsPath = MappingConfig.DefaultPath;
-        MappingConfig mappingConfig;
-        if (File.Exists(mappingsPath))
-        {
-            mappingConfig = MappingConfig.Load(mappingsPath);
-        }
-        else
-        {
-            mappingConfig = MappingConfig.CreateDefault();
-            mappingConfig.Save(mappingsPath);
-        }
-
-        // Infrastructure
-        services.AddSingleton<IFileScanner, FileScanner>();
-        services.AddSingleton<IMetadataExtractor>(_ => new ExifToolMetadataExtractor(exifToolPath));
-        services.AddSingleton<IFileOperator, FileOperator>();
-        services.AddSingleton<IAssetRepository>(_ => new SqliteAssetRepository(dbPath));
-        services.AddSingleton(mappingConfig);
-        services.AddSingleton<INormalizer>(sp => new Normalizer(sp.GetRequiredService<MappingConfig>()));
+        services.AddSingleton(_ => new MappingConfigProvider(MappingConfig.DefaultPath));
+        services.AddSingleton<INormalizer>(sp => new Normalizer(sp.GetRequiredService<MappingConfigProvider>()));
         services.AddSingleton<IPathResolver, PathResolver>();
         services.AddSingleton<IDuplicateDetector, DuplicateDetector>();
+        services.AddSingleton<IFileScanner, FileScanner>();
+        services.AddSingleton<IMetadataExtractor>(_ => new ExifToolMetadataExtractor());
+        services.AddSingleton<IFileOperator, FileOperator>();
+        services.AddSingleton<IAssetRepository>(_ => new SqliteAssetRepository(AppPaths.AssetDatabase));
+        services.AddSingleton(_ => new StatsHistoryRepository(AppPaths.HistoryDatabase));
+        services.AddSingleton(_ => new OperationJournal(AppPaths.HistoryDatabase));
+        services.AddSingleton<UndoService>();
+        services.AddSingleton<IOrganizeUseCase, OrganizeUseCase>();
 
-        // Application
-        services.AddTransient<IOrganizeUseCase, OrganizeUseCase>();
-
-        // Infrastructure: 統計履歴DB（アセットDBと同じパスに別ファイル）
-        var statsDbPath = Path.Combine(appDataDir, "stats_history.db");
-        services.AddSingleton(_ => new StatsHistoryRepository(statsDbPath));
-
-        // Presentation
-        services.AddTransient<MainViewModel>();
-        services.AddTransient<MainWindow>();
+        services.AddSingleton<MainViewModel>();
+        services.AddSingleton<MainWindow>();
     }
 
-    protected override void OnExit(System.Windows.ExitEventArgs e)
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        if (_serviceProvider is IDisposable d) d.Dispose();
+        e.Handled = true;
+        ReportFatal(e.Exception, "エラーが発生しました");
+    }
+
+    private static void ReportFatal(Exception? ex, string title)
+    {
+        var logPath = WriteCrashLog(ex);
+        var message = $"{title}。\n\n{ex?.Message}\n\n詳細はログに記録しました:\n{logPath}";
+        try
+        {
+            System.Windows.MessageBox.Show(message, "PhotoExplorer", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch { }
+    }
+
+    private static string WriteCrashLog(Exception? ex)
+    {
+        try
+        {
+            AppPaths.EnsureCreated();
+            var sb = new StringBuilder()
+                .AppendLine($"==== {DateTime.Now:yyyy-MM-dd HH:mm:ss} (v{typeof(App).Assembly.GetName().Version}) ====")
+                .AppendLine(ex?.ToString() ?? "(例外情報なし)");
+            File.AppendAllText(AppPaths.CrashLog, sb.ToString());
+        }
+        catch { }
+        return AppPaths.CrashLog;
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _serviceProvider?.Dispose();
         base.OnExit(e);
     }
 }

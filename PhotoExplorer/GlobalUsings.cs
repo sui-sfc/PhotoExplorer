@@ -1,2 +1,3 @@
-// WPF + WinForms 併用時の System.IO / 名前競合を一括解決
 global using System.IO;
+// プロジェクトの名前空間 PhotoExplorer.Application と System.Windows.Application の衝突を避ける
+global using WpfApplication = System.Windows.Application;

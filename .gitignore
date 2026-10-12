@@ -1,0 +1,20 @@
+# ビルド成果物
+bin/
+obj/
+publish/
+artifacts/
+TestResults/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# exiftool は各自で配置する（README 参照）
+PhotoExplorer/Resources/*
+!PhotoExplorer/Resources/.gitkeep
+
+# スクリーンショット作成時のエラー出力
+docs/images/screenshot-error.txt
