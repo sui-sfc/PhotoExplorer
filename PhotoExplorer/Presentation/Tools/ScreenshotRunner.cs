@@ -242,25 +242,27 @@ internal static class ScreenshotRunner
 
     private static void RunExifTool(List<string> args)
     {
-        var argFile = Path.Combine(Path.GetTempPath(), "pe_demo_exif.args");
-        // 「-execute」で区切った各コマンドに、コマンドラインの -common_args 以降が共通で付く
+        // 「-execute」で区切った各コマンドに、コマンドラインの -common_args 以降が共通で付く。
+        // 日本語パスを含む引数は標準入力から UTF-8 で渡す。
         if (args.Count > 0 && args[^1] == "-execute") args.RemoveAt(args.Count - 1);
-        File.WriteAllLines(argFile, args, new System.Text.UTF8Encoding(false));
         var psi = new ProcessStartInfo(Infrastructure.ExifToolLocator.Resolve(null))
         {
             UseShellExecute = false,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             RedirectStandardInput = true,
+            StandardInputEncoding = new System.Text.UTF8Encoding(false),
             CreateNoWindow = true,
         };
-        foreach (var a in new[] { "-charset", "filename=utf8", "-@", argFile, "-common_args", "-overwrite_original", "-q" })
+        foreach (var a in new[] { "-charset", "filename=utf8", "-@", "-", "-common_args", "-overwrite_original", "-q" })
             psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
-        p.StandardInput.Close();
         var errTask = p.StandardError.ReadToEndAsync();
-        p.StandardOutput.ReadToEnd();
+        var outTask = p.StandardOutput.ReadToEndAsync();
+        foreach (var a in args) p.StandardInput.WriteLine(a);
+        p.StandardInput.Close();
         p.WaitForExit();
+        outTask.Wait();
         var err = errTask.Result;
         if (!string.IsNullOrWhiteSpace(err)) Console.Error.WriteLine(err);
     }

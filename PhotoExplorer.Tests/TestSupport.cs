@@ -68,19 +68,23 @@ public static class TestImages
         if (args.Count == 2) return path;
         args.Add(path);
 
-        // Windows の exiftool はコマンドライン上の日本語パスを扱えないので、UTF-8 の引数ファイルで渡す
-        var argFile = path + ".args";
-        File.WriteAllLines(argFile, args, new System.Text.UTF8Encoding(false));
-        var psi = new ProcessStartInfo("exiftool") { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true };
-        foreach (var a in new[] { "-charset", "filename=utf8", "-@", argFile }) psi.ArgumentList.Add(a);
+        // Windows の exiftool はコマンドライン上の日本語パスを扱えないので、標準入力から UTF-8 で渡す
+        var psi = new ProcessStartInfo("exiftool")
+        {
+            UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true,
+            RedirectStandardInput = true, StandardInputEncoding = new System.Text.UTF8Encoding(false),
+        };
+        foreach (var a in new[] { "-charset", "filename=utf8", "-@", "-" }) psi.ArgumentList.Add(a);
         using (var p = Process.Start(psi)!)
         {
             var err = p.StandardError.ReadToEndAsync();
-            p.StandardOutput.ReadToEnd();
+            var outp = p.StandardOutput.ReadToEndAsync();
+            foreach (var a in args) p.StandardInput.WriteLine(a);
+            p.StandardInput.Close();
+            outp.Wait();
             p.WaitForExit();
             if (p.ExitCode != 0) throw new InvalidOperationException($"exiftool でタグを書き込めません: {path}\n{err.Result}");
         }
-        File.Delete(argFile);
         return path;
     }
 

@@ -113,22 +113,19 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         IReadOnlyList<string> paths, CancellationToken cancellationToken)
     {
         var results = new Dictionary<string, MetadataResult>(PathUtil.Comparer);
-        var argFile = Path.Combine(Path.GetTempPath(), $"photoexplorer_{Guid.NewGuid():N}.args");
 
         try
         {
-            // ファイル名は引数ファイル（UTF-8）で渡す。コマンドラインで渡すと日本語パスが文字化けする。
+            // 引数（ファイル名を含む）は標準入力から UTF-8 で渡す（-@ -）。
+            // コマンドラインや一時ファイルのパスに日本語が含まれると Windows 版 exiftool が扱えないため。
             var lines = new List<string> { "-json", "-n", "-fast", "-q", "-api", "QuickTimeUTC=1" };
             lines.AddRange(Tags);
             lines.AddRange(paths);
-            await File.WriteAllLinesAsync(argFile, lines, new UTF8Encoding(false), cancellationToken)
-                .ConfigureAwait(false);
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60 + paths.Count * 3));
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
 
-            using var process = StartProcess(["-charset", "filename=utf8", "-@", argFile]);
-            process.StandardInput.Close(); // exiftool(-k).exe の「キー入力待ち」で止まらないように
+            using var process = StartProcess(["-charset", "filename=utf8", "-@", "-"]);
 
             // stdout と stderr を同時に読まないと、片方のバッファが詰まってデッドロックする
             var stdoutTask = process.StandardOutput.ReadToEndAsync(linked.Token);
@@ -137,6 +134,10 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
             string stdout, stderr;
             try
             {
+                foreach (var line in lines)
+                    await process.StandardInput.WriteLineAsync(line.AsMemory(), linked.Token).ConfigureAwait(false);
+                process.StandardInput.Close(); // exiftool(-k).exe の「キー入力待ち」もここで抜ける
+
                 await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
                 stdout = await stdoutTask.ConfigureAwait(false);
                 stderr = await stderrTask.ConfigureAwait(false);
@@ -165,10 +166,6 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
             foreach (var p in paths)
                 results.TryAdd(p, new MetadataResult(null, $"exiftool を実行できませんでした: {ex.Message}"));
         }
-        finally
-        {
-            try { File.Delete(argFile); } catch { }
-        }
 
         return results;
     }
@@ -185,6 +182,7 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
             CreateNoWindow = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
+            StandardInputEncoding = new UTF8Encoding(false),
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
         return Process.Start(psi) ?? throw new InvalidOperationException("exiftool を起動できませんでした");
