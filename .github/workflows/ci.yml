@@ -9,6 +9,10 @@ on:
         description: "README 用スクリーンショットを撮り直してコミットする"
         type: boolean
         default: true
+      release:
+        description: "Releases に exe を公開する（バージョンは csproj の Version）"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -74,12 +78,13 @@ jobs:
           name: PhotoExplorer-win-x64
           path: publish/
 
-      - name: リリースを作成（v で始まるタグを push したとき）
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: リリースを作成（コミットメッセージに [release] を含むとき、または手動実行で指定したとき）
+        if: (github.event_name == 'workflow_dispatch' && inputs.release) || contains(github.event.head_commit.message, '[release]')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $version = "v" + ([xml](Get-Content PhotoExplorer/PhotoExplorer.csproj)).Project.PropertyGroup[0].Version
           Compress-Archive -Path publish/* -DestinationPath PhotoExplorer-win-x64.zip
           $notes = @"
           ## ダウンロード
@@ -89,7 +94,12 @@ jobs:
           - exiftool も同梱しています（``Resources`` フォルダ）
           - 「Windows によって PC が保護されました」と表示されたら「詳細情報」→「実行」を押してください
           "@
-          gh release create $env:GITHUB_REF_NAME PhotoExplorer-win-x64.zip --title "PhotoExplorer $env:GITHUB_REF_NAME" --notes $notes
+          gh release view $version *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $version PhotoExplorer-win-x64.zip --clobber
+          } else {
+            gh release create $version PhotoExplorer-win-x64.zip --target $env:GITHUB_SHA --title "PhotoExplorer $version" --notes $notes --latest
+          }
 
       - name: スクリーンショットを作成
         timeout-minutes: 10
