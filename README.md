@@ -1,5 +1,7 @@
 # PhotoExplorer
 
+**日本語** | [English](README.en.md)
+
 カメラや SD カードから取り込んだまま散らかっている写真を、**撮影日・カメラ・撮影地などの情報（EXIF）をもとに、きれいなフォルダ構成へ自動で整理する** Windows 用のアプリです。
 
 ![実行ログ画面](docs/images/01-log.png)
@@ -250,3 +252,7 @@ publish\PhotoExplorer.exe --screenshots docs\images
 ```
 
 GitHub Actions の「CI」ワークフローを手動実行（Run workflow）すると、Windows 上で撮り直してコミットします。
+
+### リリースの作り方
+
+コミットメッセージに `[release]` を入れるか、GitHub Actions の「CI」ワークフローを「release」にチェックを入れて手動実行すると、`PhotoExplorer-win-x64.zip` を作って Releases に公開します。バージョンは `PhotoExplorer/PhotoExplorer.csproj` の `Version` が使われます。
