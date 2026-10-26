@@ -56,7 +56,6 @@ jobs:
           $dir = $exe.DirectoryName
           if ($exe.Name -ne "exiftool.exe") { Copy-Item $exe.FullName (Join-Path $dir "exiftool.exe") }
           Add-Content $env:GITHUB_PATH $dir
-          Add-Content $env:GITHUB_ENV "EXIFTOOL_DIR=$dir"
           & (Join-Path $dir "exiftool.exe") -ver
       - name: ビルド
         run: dotnet build PhotoExplorer.sln -c Release
@@ -64,15 +63,6 @@ jobs:
         run: dotnet test PhotoExplorer.Tests/PhotoExplorer.Tests.csproj -c Release --no-build --logger "console;verbosity=normal"
       - name: 発行（単一 exe）
         run: dotnet publish PhotoExplorer/PhotoExplorer.csproj -c Release -o publish
-      - name: exiftool を同梱
-        shell: pwsh
-        run: |
-          # 展開してすぐ使えるよう、exiftool.exe と exiftool_files を Resources に入れる
-          New-Item -ItemType Directory -Force publish/Resources | Out-Null
-          Copy-Item (Join-Path $env:EXIFTOOL_DIR "exiftool.exe") publish/Resources/
-          $files = Join-Path $env:EXIFTOOL_DIR "exiftool_files"
-          if (Test-Path $files) { Copy-Item $files publish/Resources/ -Recurse }
-          Get-ChildItem publish -Recurse -Depth 1 | Select-Object FullName
       - uses: actions/upload-artifact@v7
         with:
           name: PhotoExplorer-win-x64
@@ -91,12 +81,16 @@ jobs:
           下の **PhotoExplorer-win-x64.zip** をダウンロードして展開し、``PhotoExplorer.exe`` をダブルクリックしてください。
 
           - .NET のインストールは不要です
-          - exiftool も同梱しています（``Resources`` フォルダ）
           - 「Windows によって PC が保護されました」と表示されたら「詳細情報」→「実行」を押してください
+
+          ## exiftool（別途入手が必要）
+          撮影日やカメラ名の読み取りに、無料の [ExifTool](https://exiftool.org/)（作者: Phil Harvey）を使います。PhotoExplorer には同梱していません。
+          exiftool.org から Windows 版（64-bit の zip）をダウンロードし、中の ``exiftool(-k).exe`` と ``exiftool_files`` フォルダを、展開したフォルダの ``Resources`` に入れてください（``Resources`` 内の「exiftoolの置き場所.txt」にも手順があります）。
           "@
           gh release view $version *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $version PhotoExplorer-win-x64.zip --clobber
+            gh release edit $version --notes $notes
           } else {
             gh release create $version PhotoExplorer-win-x64.zip --target $env:GITHUB_SHA --title "PhotoExplorer $version" --notes $notes --latest
           }

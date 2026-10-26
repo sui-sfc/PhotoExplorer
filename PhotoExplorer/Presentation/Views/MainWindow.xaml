@@ -299,6 +299,26 @@
             </Grid>
         </Border>
 
+        <!-- ======================= exiftool が見つからないときの案内 ======================= -->
+        <Border DockPanel.Dock="Top" Background="#FFFBEB" BorderBrush="#FCD34D" BorderThickness="1" CornerRadius="8"
+                Padding="14,10" Margin="0,0,0,8"
+                Visibility="{Binding ShowExifToolWarning, Converter={StaticResource BoolToVis}}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="exiftool.org を開く" Style="{StaticResource SmallButton}" Command="{Binding OpenExifToolSiteCommand}"/>
+                    <Button Content="Resources フォルダを開く" Style="{StaticResource SmallButton}" Command="{Binding OpenResourcesFolderCommand}"/>
+                    <Button Content="再確認" Style="{StaticResource SmallButton}" Command="{Binding CheckExifToolCommand}"/>
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="exiftool が見つかりません" FontWeight="Bold" Foreground="#92400E"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="#92400E" Margin="0,2,0,0">
+                        撮影日やカメラ名を読むには exiftool（無料）が必要です。exiftool.org から Windows 版（64-bit の zip）をダウンロードし、
+                        中の exiftool(-k).exe と exiftool_files フォルダを Resources フォルダに入れて「再確認」を押してください。
+                    </TextBlock>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
         <!-- ======================= 進捗 ======================= -->
         <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
                 BorderThickness="1" CornerRadius="8" Padding="14,8" Margin="0,0,0,8">

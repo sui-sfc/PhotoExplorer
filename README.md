@@ -45,24 +45,29 @@ D:\Pictures
 
 **[Releases（最新版）](https://github.com/sui-sfc/PhotoExplorer/releases/latest)** を開き、「Assets」にある **`PhotoExplorer-win-x64.zip`** をダウンロードして、好きな場所に展開します。
 
-```
-PhotoExplorer-win-x64\
-├── PhotoExplorer.exe     ← これをダブルクリック
-└── Resources\
-    ├── exiftool.exe      ← 同梱済み（撮影情報の読み取りに使用）
-    └── exiftool_files\
-```
-
 - .NET のインストールは不要です。
 - 初回起動時に「Windows によって PC が保護されました」と表示されたら、「詳細情報」→「実行」を押してください。
 
 自分でビルドする場合は [開発者向け](#開発者向け) を参照してください。
 
-### 2. exiftool について
+### 2. exiftool を用意する
 
-写真の撮影情報を読むのに、無料のツール [ExifTool](https://exiftool.org/) を使います。**Releases の zip には同梱済み**なので、通常は何もしなくて構いません。
+写真の撮影情報を読むのに、無料のツール [ExifTool](https://exiftool.org/)（作者: Phil Harvey）を使います。PhotoExplorer には同梱していないので、各自で入手してください。
 
-起動後、「詳細オプション」に「exiftool 13.xx を使用」と緑色で表示されていれば OK です。別のバージョンを使いたい場合は、exiftool.org から Windows 版をダウンロードし、`exiftool(-k).exe`（`exiftool.exe` に名前を変えても可）と `exiftool_files` フォルダを `Resources` に入れ替えるか、「詳細オプション」で場所を指定してください。
+1. exiftool.org のトップページから **Windows Executable**（64-bit の zip）をダウンロードします。
+2. 展開すると `exiftool(-k).exe` と `exiftool_files` フォルダがあります。この **2 つとも** を、`PhotoExplorer.exe` と同じ場所にある `Resources` フォルダへ入れます。
+
+```
+PhotoExplorer.exe
+Resources\
+├── exiftoolの置き場所.txt
+├── exiftool(-k).exe     ← exiftool.exe に名前を変えても OK
+└── exiftool_files\
+```
+
+exiftool が見つからないと、アプリの上部に案内が表示されます。そこにある「exiftool.org を開く」「Resources フォルダを開く」ボタンを使うと簡単です。入れたら「再確認」を押してください。「詳細オプション」に「exiftool 13.xx を使用」と緑色で表示されれば OK です。
+
+すでに PATH の通った場所に exiftool がある場合はそのまま使われます。別の場所に置きたい場合は、「詳細オプション」で場所を指定できます。
 
 > 都市名でのフォルダ分け（`{city}` など）には exiftool **12.78 以降** が必要です。
 

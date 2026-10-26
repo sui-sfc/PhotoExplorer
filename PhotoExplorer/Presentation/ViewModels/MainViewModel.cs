@@ -83,6 +83,16 @@ public sealed class MainViewModel : ViewModelBase
                                                        () => !IsRunning && DuplicateGroups.Any(g => g.Files.Any(f => f.CanRecycle)));
         InsertVariableCommand  = new RelayCommand(p => { if (p is TemplateVariable v) FolderTemplate = AppendToken(FolderTemplate, v.Token); });
         CheckExifToolCommand   = new RelayCommand(() => _ = CheckExifToolAsync());
+        OpenExifToolSiteCommand = new RelayCommand(() => Shell.OpenUrl(ExifToolDownloadUrl));
+        OpenResourcesFolderCommand = new RelayCommand(() =>
+        {
+            try
+            {
+                Directory.CreateDirectory(ResourcesDirectory);
+                Shell.OpenFolder(ResourcesDirectory);
+            }
+            catch (Exception ex) { Dialogs.Error($"フォルダを開けませんでした:\n{ResourcesDirectory}\n\n{ex.Message}"); }
+        });
 
         _uiTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(150) };
         _uiTimer.Tick += (_, _) => { FlushLog(); UpdateClock(); };
@@ -253,8 +263,20 @@ public sealed class MainViewModel : ViewModelBase
     private string _exifToolStatus = "exiftool を確認しています...";
     private bool _isExifToolOk;
 
+    private bool _exifToolChecked;
+
     public string ExifToolStatus { get => _exifToolStatus; private set => SetField(ref _exifToolStatus, value); }
-    public bool IsExifToolOk { get => _isExifToolOk; private set => SetField(ref _isExifToolOk, value); }
+    public bool IsExifToolOk
+    {
+        get => _isExifToolOk;
+        private set { if (SetField(ref _isExifToolOk, value)) OnPropertyChanged(nameof(ShowExifToolWarning)); }
+    }
+
+    /// <summary>確認が終わって exiftool が見つからなかったときだけ警告を出す</summary>
+    public bool ShowExifToolWarning => _exifToolChecked && !_isExifToolOk;
+
+    public const string ExifToolDownloadUrl = "https://exiftool.org/";
+    public string ResourcesDirectory => Path.Combine(AppContext.BaseDirectory, "Resources");
 
     private async Task CheckExifToolAsync()
     {
@@ -262,9 +284,11 @@ public sealed class MainViewModel : ViewModelBase
         ExifToolStatus = "exiftool を確認しています...";
         var version = await Task.Run(() => new ExifToolMetadataExtractor(path).GetVersion());
         IsExifToolOk = version != null;
+        _exifToolChecked = true;
+        OnPropertyChanged(nameof(ShowExifToolWarning));
         ExifToolStatus = version != null
             ? $"exiftool {version} を使用（{path}）"
-            : $"exiftool が見つかりません（{path}）。撮影日・カメラ名が読めないため、ファイルの日時で整理します。";
+            : $"exiftool が見つかりません（{path}）。exiftool.org から Windows 版を入手し、Resources フォルダに入れてください。";
     }
 
     // ===================== 実行状態 =====================
@@ -451,6 +475,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand RecycleAllDuplicatesCommand { get; }
     public RelayCommand InsertVariableCommand { get; }
     public RelayCommand CheckExifToolCommand { get; }
+    public RelayCommand OpenExifToolSiteCommand { get; }
+    public RelayCommand OpenResourcesFolderCommand { get; }
 
     // ===================== 実行 =====================
 
@@ -490,7 +516,9 @@ public sealed class MainViewModel : ViewModelBase
             await CheckExifToolAsync();
             if (!IsExifToolOk && !Dialogs.Confirm(
                     "exiftool が見つからないため、撮影日・カメラ名を読み取れません。\n" +
-                    "このまま続けると、ファイルの日時でフォルダ分けされ、カメラ名は Unknown になります。\n\n続けますか？",
+                    "このまま続けると、ファイルの日時でフォルダ分けされ、カメラ名は Unknown になります。\n\n" +
+                    $"exiftool は {ExifToolDownloadUrl} から Windows 版を入手し、次のフォルダに入れると使えます:\n{ResourcesDirectory}\n\n" +
+                    "このまま続けますか？",
                     "exiftool が見つかりません", warning: true))
                 return;
         }

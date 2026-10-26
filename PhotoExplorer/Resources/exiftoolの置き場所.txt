@@ -1,0 +1,17 @@
+このフォルダに exiftool を入れてください
+==========================================
+
+PhotoExplorer は、写真の撮影日・カメラ名・位置情報などを読むのに
+無料のツール ExifTool（作者: Phil Harvey）を使います。
+PhotoExplorer には同梱していないので、次の手順で入手してください。
+
+1. https://exiftool.org/ を開き、「Windows Executable」の 64-bit 版 zip をダウンロードします。
+2. zip を展開すると、次の 2 つがあります。
+     exiftool(-k).exe
+     exiftool_files フォルダ
+3. この 2 つを両方とも、このフォルダ（Resources）に入れます。
+     exiftool(-k).exe は exiftool.exe に名前を変えても構いません。
+4. PhotoExplorer の「再確認」ボタンを押すか、起動し直します。
+   「exiftool 13.xx を使用」と緑色で表示されれば完了です。
+
+別の場所に置いた exiftool を使う場合は、「詳細オプション」→「exiftool の場所」で指定できます。
