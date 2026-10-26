@@ -16,7 +16,7 @@ public class OrganizeUseCaseTests
         public OrganizeUseCase UseCase { get; }
         public UndoService Undo { get; }
 
-        public Harness()
+        public Harness(IFileOperator? fileOperator = null)
         {
             Repo = new SqliteAssetRepository(Dir["db/assets.db"]);
             History = new StatsHistoryRepository(Dir["db/history.db"]);
@@ -24,7 +24,7 @@ public class OrganizeUseCaseTests
             var normalizer = new Normalizer();
             UseCase = new OrganizeUseCase(
                 new FileScanner(), new ExifToolMetadataExtractor(), normalizer, new PathResolver(normalizer),
-                new DuplicateDetector(), new FileOperator(), Repo, Journal, History);
+                new DuplicateDetector(), fileOperator ?? new FileOperator(), Repo, Journal, History);
             Undo = new UndoService(Journal, History);
         }
 
@@ -178,20 +178,17 @@ public class OrganizeUseCaseTests
     [Fact]
     public async Task Cancellation_ReturnsPartialResult()
     {
-        using var h = new Harness();
+        // 5 件目のコピーが終わった時点で確実に中断する（進捗通知の間引きやマシンの速さに左右されない）
+        using var cts = new CancellationTokenSource();
+        using var h = new Harness(new CancelAfterCopies(new FileOperator(), 5, cts));
         for (int i = 0; i < 50; i++) h.Dir.Write($"in/{i:D3}.jpg", $"file {i}");
         var s = h.Settings(OperationMode.Copy);
         s.ExifToolPath = h.Dir["no-such-exiftool"];
-        using var cts = new CancellationTokenSource();
-        var progress = new SyncProgress<OrganizeProgress>(p =>
-        {
-            if (p.Phase == RunPhase.Transferring && p.Done >= 5) cts.Cancel();
-        });
 
-        var r = await h.UseCase.ExecuteAsync(s, progress, null, cts.Token);
+        var r = await h.UseCase.ExecuteAsync(s, null, null, cts.Token);
 
         Assert.True(r.Cancelled);
-        Assert.InRange(r.TotalProcessed, 1, 49);
+        Assert.Equal(5, r.TotalProcessed);
         Assert.Contains(r.Log, l => l.Message.Contains("中断"));
     }
 
@@ -204,10 +201,26 @@ public class OrganizeUseCaseTests
             OrganizeUseCase.SidecarDestination("/i/IMG.xmp", "/i/IMG.CR3", "/o/20240101_IMG.CR3"));
     }
 
-    /// <summary>コールバックを同期実行する IProgress（テスト用）</summary>
-    private sealed class SyncProgress<T>(Action<T> action) : IProgress<T>
+    /// <summary>指定件数のコピーが終わったらキャンセルする IFileOperator（テスト用）</summary>
+    private sealed class CancelAfterCopies(IFileOperator inner, int count, CancellationTokenSource cts) : IFileOperator
     {
-        public void Report(T value) => action(value);
+        private int _copies;
+
+        public async Task<FileOpResult> CopyAsync(string sourcePath, string destPath, bool verify,
+            string? knownSourceHash = null, CancellationToken cancellationToken = default)
+        {
+            var r = await inner.CopyAsync(sourcePath, destPath, verify, knownSourceHash, cancellationToken);
+            if (Interlocked.Increment(ref _copies) == count) cts.Cancel();
+            return r;
+        }
+
+        public Task<FileOpResult> MoveAsync(string sourcePath, string destPath, bool verify,
+            string? knownSourceHash = null, CancellationToken cancellationToken = default) =>
+            inner.MoveAsync(sourcePath, destPath, verify, knownSourceHash, cancellationToken);
+
+        public Task<FileOpResult> MoveToTrashAsync(string sourcePath, string trashDirectory,
+            CancellationToken cancellationToken = default) =>
+            inner.MoveToTrashAsync(sourcePath, trashDirectory, cancellationToken);
     }
 }
 
