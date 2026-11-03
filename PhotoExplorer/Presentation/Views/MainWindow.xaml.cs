@@ -42,6 +42,8 @@ public partial class MainWindow : Window
         LogListBox.ScrollIntoView(LogListBox.Items[^1]);
     }
 
+    private const double DefaultLibraryPreviewWidth = 340;
+
     private static void LocalizeDatePicker(object sender, RoutedEventArgs e)
     {
         if (sender is not DatePicker dp) return;
@@ -111,6 +113,9 @@ public partial class MainWindow : Window
 
         if (p.WindowMaximized) WindowState = WindowState.Maximized;
         if (p.SelectedTab >= 0 && p.SelectedTab < MainTabs.Items.Count) MainTabs.SelectedIndex = p.SelectedTab;
+        if (p.LibraryPreviewWidth >= LibraryPreviewColumn.MinWidth)
+            LibraryPreviewColumn.Width = new GridLength(Math.Min(p.LibraryPreviewWidth, 1200));
+        LibrarySplitter.MouseDoubleClick += (_, _) => LibraryPreviewColumn.Width = new GridLength(DefaultLibraryPreviewWidth);
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -130,6 +135,7 @@ public partial class MainWindow : Window
         p.WindowHeight = bounds.Height;
         p.WindowMaximized = WindowState == WindowState.Maximized;
         p.SelectedTab = MainTabs.SelectedIndex;
+        if (LibraryPreviewColumn.ActualWidth > 0) p.LibraryPreviewWidth = LibraryPreviewColumn.ActualWidth;
         _vm.SavePreferences();
         base.OnClosing(e);
     }

@@ -35,6 +35,8 @@ public sealed class UserPreferences
     public double WindowHeight { get; set; } = 900;
     public bool WindowMaximized { get; set; }
     public int SelectedTab     { get; set; }
+    /// <summary>ライブラリ右側（プレビュー）の幅</summary>
+    public double LibraryPreviewWidth { get; set; } = 340;
 
     public static UserPreferences Load(string? path = null)
     {

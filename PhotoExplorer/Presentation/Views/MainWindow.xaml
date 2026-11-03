@@ -488,9 +488,35 @@
 
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="340"/>
+                            <ColumnDefinition Width="*" MinWidth="200"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition x:Name="LibraryPreviewColumn" Width="340" MinWidth="220"/>
                         </Grid.ColumnDefinitions>
+
+                        <!-- 一覧とプレビューの境目。ドラッグで幅を変えられる（ダブルクリックで元の幅に戻す） -->
+                        <GridSplitter x:Name="LibrarySplitter" Grid.Column="1" Width="8" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                                      ResizeBehavior="PreviousAndNext" ResizeDirection="Columns" ShowsPreview="False"
+                                      Background="Transparent" Cursor="SizeWE" Focusable="False"
+                                      ToolTip="ドラッグで幅を変えられます（ダブルクリックで元に戻す）">
+                            <GridSplitter.Template>
+                                <ControlTemplate TargetType="GridSplitter">
+                                    <Border Background="{TemplateBinding Background}">
+                                        <Border x:Name="Grip" Width="2" CornerRadius="1" Background="#CBD5E1"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center" Height="40"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Grip" Property="Background" Value="#2563EB"/>
+                                            <Setter TargetName="Grip" Property="Height" Value="80"/>
+                                        </Trigger>
+                                        <Trigger Property="IsDragging" Value="True">
+                                            <Setter TargetName="Grip" Property="Background" Value="#2563EB"/>
+                                            <Setter TargetName="Grip" Property="VerticalAlignment" Value="Stretch"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </GridSplitter.Template>
+                        </GridSplitter>
 
                         <ListBox x:Name="LibraryList" ItemsSource="{Binding Rows}" BorderBrush="{StaticResource BorderBrush}"
                                  HorizontalContentAlignment="Left"
@@ -600,7 +626,7 @@
                                    Visibility="{Binding HasPhotos, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"/>
 
                         <!-- プレビューと撮影情報 -->
-                        <Border Grid.Column="1" Margin="8,0,0,0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                                 CornerRadius="6" Padding="10">
                             <Grid>
                                 <Grid.RowDefinitions>
