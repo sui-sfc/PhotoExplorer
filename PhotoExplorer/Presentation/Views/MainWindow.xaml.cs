@@ -5,7 +5,7 @@ using PhotoExplorer.Presentation.ViewModels;
 
 namespace PhotoExplorer.Presentation.Views;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly MainViewModel _vm;
 

@@ -85,6 +85,12 @@ public sealed class MainViewModel : ViewModelBase
                                                        () => !IsRunning && DuplicateGroups.Any(g => g.Files.Any(f => f.CanRecycle)));
         InsertVariableCommand  = new RelayCommand(p => { if (p is TemplateVariable v) FolderTemplate = AppendToken(FolderTemplate, v.Token); });
         CheckExifToolCommand   = new RelayCommand(() => _ = CheckExifToolAsync());
+        OpenLicenseCommand     = new RelayCommand(p =>
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, p as string ?? "LICENSE");
+            if (File.Exists(path)) Shell.OpenInNotepad(path);
+            else Shell.OpenUrl("https://github.com/sui-sfc/PhotoExplorer/blob/HEAD/" + (p as string ?? "LICENSE"));
+        });
         OpenExifToolSiteCommand = new RelayCommand(() => Shell.OpenUrl(ExifToolDownloadUrl));
         OpenResourcesFolderCommand = new RelayCommand(() =>
         {
@@ -478,6 +484,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand RecycleAllDuplicatesCommand { get; }
     public RelayCommand InsertVariableCommand { get; }
     public RelayCommand CheckExifToolCommand { get; }
+    public RelayCommand OpenLicenseCommand { get; }
     public RelayCommand OpenExifToolSiteCommand { get; }
     public RelayCommand OpenResourcesFolderCommand { get; }
 
