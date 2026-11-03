@@ -58,7 +58,16 @@ public sealed class LibraryService
         Task.Run(async () =>
         {
             var assets = await _repository.LoadAllAsync(cancellationToken).ConfigureAwait(false);
-            return Build(assets, _normalizer, File.Exists, cancellationToken);
+
+            // ファイルがあるかどうかの確認は、NAS などでは 1 件ずつだと遅いので並列にまとめて行う
+            var candidates = assets.SelectMany(x => new[] { x.SourcePath, x.OutputPath })
+                                   .OfType<string>().Distinct(PathUtil.Comparer).ToList();
+            var exists = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>(PathUtil.Comparer);
+            Parallel.ForEach(candidates,
+                new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = cancellationToken },
+                path => exists[path] = File.Exists(path));
+
+            return Build(assets, _normalizer, path => exists.TryGetValue(path, out var e) ? e : File.Exists(path), cancellationToken);
         }, cancellationToken);
 
     internal static IReadOnlyList<LibraryPhoto> Build(

@@ -27,11 +27,11 @@ public interface IMetadataExtractor
 
 /// <summary>
 /// exiftool を外部プロセスとして呼び出してメタデータを抽出する。
-/// 1 プロセスで複数ファイルを処理することで起動コストを抑える。
+/// 常駐モード（-stay_open）の exiftool に複数ファイルずつ渡すことで、起動コストを最小限にする。
 /// </summary>
 public sealed class ExifToolMetadataExtractor : IMetadataExtractor
 {
-    private const int BatchSize = 40;
+    private const int BatchSize = 50;
     private static readonly TimeSpan VersionTimeout = TimeSpan.FromSeconds(15);
 
     private static readonly string[] DateFormats =
@@ -89,86 +89,163 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         var results = new ConcurrentDictionary<string, MetadataResult>(PathUtil.Comparer);
         if (filePaths.Count == 0) return results;
 
-        var batches = filePaths.Chunk(BatchSize).ToList();
+        var batches = new ConcurrentQueue<string[]>(filePaths.Chunk(BatchSize));
+        int workers = Math.Clamp(maxDegreeOfParallelism, 1, Math.Max(1, batches.Count));
         int done = 0;
 
-        await Parallel.ForEachAsync(
-            batches,
-            new ParallelOptions
+        // exiftool を「常駐モード」（-stay_open）で workers 個だけ起動し、バッチを順に流し込む。
+        // バッチごとに起動し直さないので、起動の遅い Windows 版 exiftool でも速い。
+        var tasks = Enumerable.Range(0, workers).Select(_ => Task.Run(async () =>
+        {
+            StayOpenSession? session = null;
+            try
             {
-                MaxDegreeOfParallelism = Math.Max(1, maxDegreeOfParallelism),
-                CancellationToken = cancellationToken,
-            },
-            async (batch, ct) =>
-            {
-                var batchResult = await ExtractBatchAsync(batch, ct).ConfigureAwait(false);
-                foreach (var (path, r) in batchResult) results[path] = r;
-                completedCount?.Report(Interlocked.Add(ref done, batch.Length));
-            }).ConfigureAwait(false);
+                while (batches.TryDequeue(out var batch))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    session ??= StayOpenSession.TryStart(this);
+                    var batchResult = session == null
+                        ? Failed(batch, "exiftool を起動できませんでした")
+                        : await session.ExtractAsync(batch, cancellationToken).ConfigureAwait(false);
 
+                    // タイムアウトなどで壊れたセッションは捨てて、次のバッチで起動し直す
+                    if (session is { IsBroken: true })
+                    {
+                        session.Dispose();
+                        session = null;
+                    }
+
+                    foreach (var (path, r) in batchResult) results[path] = r;
+                    completedCount?.Report(Interlocked.Add(ref done, batch.Length));
+                }
+            }
+            finally
+            {
+                session?.Dispose();
+            }
+        }, cancellationToken)).ToList();
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
         return results;
     }
 
-    private async Task<Dictionary<string, MetadataResult>> ExtractBatchAsync(
-        IReadOnlyList<string> paths, CancellationToken cancellationToken)
+    private static Dictionary<string, MetadataResult> Failed(IEnumerable<string> paths, string message) =>
+        paths.ToDictionary(p => p, _ => new MetadataResult(null, message), PathUtil.Comparer);
+
+    /// <summary>常駐させた exiftool 1 プロセス。引数は標準入力から UTF-8 で渡す（日本語パス対策）</summary>
+    private sealed class StayOpenSession : IDisposable
     {
-        var results = new Dictionary<string, MetadataResult>(PathUtil.Comparer);
+        private readonly Process _process;
+        private readonly StringBuilder _stderr = new();
+        private readonly Task _stderrPump;
+        private int _commandId;
 
-        try
+        private StayOpenSession(Process process)
         {
-            // 引数（ファイル名を含む）は標準入力から UTF-8 で渡す（-@ -）。
-            // コマンドラインや一時ファイルのパスに日本語が含まれると Windows 版 exiftool が扱えないため。
-            var lines = new List<string> { "-json", "-n", "-fast", "-q", "-api", "QuickTimeUTC=1", "-api", "Geolocation=1" };
-            lines.AddRange(Tags);
-            lines.AddRange(paths);
+            _process = process;
+            _process.StandardInput.AutoFlush = false;
+            // stderr は常に読み続ける（溜まるとバッファが詰まって exiftool が止まる）
+            _stderrPump = Task.Run(async () =>
+            {
+                var buffer = new char[4096];
+                int n;
+                try
+                {
+                    while ((n = await _process.StandardError.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+                        lock (_stderr) _stderr.Append(buffer, 0, n);
+                }
+                catch { }
+            });
+        }
 
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60 + paths.Count * 3));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        public bool IsBroken { get; private set; }
 
-            using var process = StartProcess(["-charset", "filename=utf8", "-@", "-"]);
-
-            // stdout と stderr を同時に読まないと、片方のバッファが詰まってデッドロックする
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(linked.Token);
-            var stderrTask = process.StandardError.ReadToEndAsync(linked.Token);
-
-            string stdout, stderr;
+        public static StayOpenSession? TryStart(ExifToolMetadataExtractor owner)
+        {
             try
             {
-                foreach (var line in lines)
-                    await process.StandardInput.WriteLineAsync(line.AsMemory(), linked.Token).ConfigureAwait(false);
-                process.StandardInput.Close(); // exiftool(-k).exe の「キー入力待ち」もここで抜ける
+                var args = new List<string> { "-stay_open", "True", "-@", "-", "-common_args", "-charset", "filename=utf8" };
+                args.AddRange(CommonArgs);
+                return new StayOpenSession(owner.StartProcess(args));
+            }
+            catch
+            {
+                return null;
+            }
+        }
 
-                await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-                stdout = await stdoutTask.ConfigureAwait(false);
-                stderr = await stderrTask.ConfigureAwait(false);
+        public async Task<Dictionary<string, MetadataResult>> ExtractAsync(string[] paths, CancellationToken cancellationToken)
+        {
+            var results = new Dictionary<string, MetadataResult>(PathUtil.Comparer);
+            int id = ++_commandId;
+            lock (_stderr) _stderr.Clear();
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60 + paths.Length * 3));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+            try
+            {
+                var input = _process.StandardInput;
+                foreach (var path in paths) await input.WriteLineAsync(path.AsMemory(), linked.Token).ConfigureAwait(false);
+                await input.WriteLineAsync($"-execute{id}".AsMemory(), linked.Token).ConfigureAwait(false);
+                await input.FlushAsync(linked.Token).ConfigureAwait(false);
+
+                // 「{readyN}」の行が出るまでが、このバッチの出力
+                var output = new StringBuilder();
+                var marker = $"{{ready{id}}}";
+                while (true)
+                {
+                    var line = await _process.StandardOutput.ReadLineAsync(linked.Token).ConfigureAwait(false)
+                               ?? throw new IOException("exiftool が終了しました");
+                    if (line.Trim() == marker) break;
+                    output.AppendLine(line);
+                }
+
+                ParseOutput(output.ToString(), results);
             }
             catch (OperationCanceledException)
             {
-                KillQuietly(process);
+                IsBroken = true;
                 if (cancellationToken.IsCancellationRequested) throw;
-                foreach (var p in paths)
-                    results[p] = new MetadataResult(null, "exiftool がタイムアウトしました");
-                return results;
+                return Failed(paths, "exiftool がタイムアウトしました");
+            }
+            catch (Exception ex)
+            {
+                IsBroken = true;
+                return Failed(paths, $"exiftool を実行できませんでした: {ex.Message}");
             }
 
-            ParseOutput(stdout, results);
-
+            string stderr;
+            lock (_stderr) stderr = _stderr.ToString();
             var firstError = FirstErrorLine(stderr);
             foreach (var p in paths)
-            {
                 if (!results.ContainsKey(p))
                     results[p] = new MetadataResult(null, firstError ?? "exiftool から結果が返りませんでした");
-            }
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            foreach (var p in paths)
-                results.TryAdd(p, new MetadataResult(null, $"exiftool を実行できませんでした: {ex.Message}"));
+            return results;
         }
 
-        return results;
+        public void Dispose()
+        {
+            try
+            {
+                if (!IsBroken && !_process.HasExited)
+                {
+                    _process.StandardInput.WriteLine("-stay_open");
+                    _process.StandardInput.WriteLine("False");
+                    _process.StandardInput.Flush();
+                }
+                _process.StandardInput.Close(); // exiftool(-k).exe の「キー入力待ち」もここで抜ける
+                if (!_process.WaitForExit(3000)) KillQuietly(_process);
+            }
+            catch
+            {
+                KillQuietly(_process);
+            }
+            _process.Dispose();
+        }
     }
+
+    private static readonly string[] CommonArgs =
+        new[] { "-json", "-n", "-fast", "-q", "-api", "QuickTimeUTC=1", "-api", "Geolocation=1" }.Concat(Tags).ToArray();
 
     private Process StartProcess(IEnumerable<string> args)
     {

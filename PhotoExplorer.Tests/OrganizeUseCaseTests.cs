@@ -188,7 +188,8 @@ public class OrganizeUseCaseTests
         var r = await h.UseCase.ExecuteAsync(s, null, null, cts.Token);
 
         Assert.True(r.Cancelled);
-        Assert.Equal(5, r.TotalProcessed);
+        // 並列でコピーしているので、中断の時点で処理中だったものは最後まで終わることがある
+        Assert.InRange(r.TotalProcessed, 5, 5 + s.MaxDegreeOfParallelism);
         Assert.Contains(r.Log, l => l.Message.Contains("中断"));
     }
 

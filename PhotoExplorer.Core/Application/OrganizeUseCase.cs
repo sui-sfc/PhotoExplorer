@@ -422,69 +422,99 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
         var kind = move ? OperationKind.Move : OperationKind.Copy;
         var targets = active.Where(a => a.Status != AssetStatus.Error).ToList();
         int done = 0, trashed = 0;
+        int workers = Math.Clamp(s.MaxDegreeOfParallelism, 1, 8);
 
-        ctx.Add(LogEntry.Info($"{ModeLabel(s.Mode)} を開始します（{targets.Count:N0} 件、コピー検証: {(s.VerifyCopies ? "あり" : "なし")}）"));
+        ctx.Add(LogEntry.Info($"{ModeLabel(s.Mode)} を開始します（{targets.Count:N0} 件、同時 {workers} 件、コピー検証: {(s.VerifyCopies ? "あり" : "なし")}）"));
 
-        foreach (var a in targets)
-        {
-            ct.ThrowIfCancellationRequested();
-            ctx.Report(RunPhase.Transferring, targets.Count, done, a.FileName, $"{ModeLabel(s.Mode)}中... {done:N0}/{targets.Count:N0}");
+        // 同じ出力先（同名）になるファイル同士は順番に処理し、連番（_001 など）の付き方を毎回同じにする。
+        // 出力先が違うもの同士は並列にコピー・移動する。
+        var groups = targets
+            .Select((a, index) => (a, index))
+            .GroupBy(x => DestinationKey(x.a, s), PathUtil.Comparer)
+            .OrderBy(g => g.Min(x => x.index))
+            .Select(g => g.OrderBy(x => x.index).Select(x => x.a).ToList())
+            .ToList();
 
-            try
+        await Parallel.ForEachAsync(groups,
+            new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = ct },
+            async (group, token) =>
             {
-                if (a.Status == AssetStatus.Duplicate)
+                foreach (var a in group)
                 {
-                    if (!string.IsNullOrWhiteSpace(s.TrashDirectory))
-                    {
-                        var r = await _fileOperator.MoveToTrashAsync(a.SourcePath, s.TrashDirectory, ct).ConfigureAwait(false);
-                        _journal.Record(ctx.RunId, OperationKind.Trash, a.SourcePath, r.Path, r.Hash, a.FileSize);
-                        await MoveSidecarToTrashAsync(ctx, a, ct).ConfigureAwait(false);
-                        a.OutputPath = r.Path;
-                        trashed++;
-                        ctx.PerFile(LogEntry.Info($"重複を退避: {a.SourcePath} → {r.Path}"));
-                    }
-                    else
-                    {
-                        a.OutputPath = null;
-                        ctx.PerFile(LogEntry.Info($"重複のため残しました: {a.SourcePath}"));
-                    }
+                    token.ThrowIfCancellationRequested();
+                    ctx.Report(RunPhase.Transferring, targets.Count, Volatile.Read(ref done), a.FileName,
+                        $"{ModeLabel(s.Mode)}中... {Volatile.Read(ref done):N0}/{targets.Count:N0}");
+                    if (await TransferOneAsync(ctx, a, move, kind, token).ConfigureAwait(false))
+                        Interlocked.Increment(ref trashed);
+                    Interlocked.Increment(ref done);
                 }
-                else
-                {
-                    var r = move
-                        ? await _fileOperator.MoveAsync(a.SourcePath, a.OutputPath!, s.VerifyCopies, a.FullHash, ct).ConfigureAwait(false)
-                        : await _fileOperator.CopyAsync(a.SourcePath, a.OutputPath!, s.VerifyCopies, a.FullHash, ct).ConfigureAwait(false);
+            }).ConfigureAwait(false);
 
-                    a.FullHash ??= r.Hash;
-                    if (r.Outcome == FileOpOutcome.AlreadyExists)
-                    {
-                        a.Status = AssetStatus.Skipped;
-                        a.OutputPath = r.Path;
-                        ctx.PerFile(LogEntry.Info($"スキップ（出力先に同じファイルがあります）: {a.SourcePath}"));
-                    }
-                    else
-                    {
-                        _journal.Record(ctx.RunId, kind, a.SourcePath, r.Path, r.Hash, a.FileSize);
-                        a.OutputPath = r.Path;
-                        a.Status = AssetStatus.Processed;
-                        a.ProcessedAt = DateTime.Now;
-                        await TransferSidecarAsync(ctx, a, r.Path, move, kind, ct).ConfigureAwait(false);
-                        ctx.PerFile(LogEntry.Ok($"{a.SourcePath} → {r.Path}"));
-                    }
-                }
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                a.Status = AssetStatus.Error;
-                a.ErrorMessage = ex.Message;
-                ctx.Add(LogEntry.Error($"{ModeLabel(s.Mode)}できませんでした: {a.SourcePath} - {ex.Message}"));
-            }
-
-            done++;
-        }
         ctx.Report(RunPhase.Transferring, targets.Count, done, "", $"{ModeLabel(s.Mode)} 完了", force: true);
         return trashed;
+    }
+
+    /// <summary>1 ファイルをコピー・移動（重複なら退避）する。退避した場合は true</summary>
+    private async Task<bool> TransferOneAsync(RunContext ctx, ImageAsset a, bool move, OperationKind kind, CancellationToken ct)
+    {
+        var s = ctx.Settings;
+        try
+        {
+            if (a.Status == AssetStatus.Duplicate)
+            {
+                if (string.IsNullOrWhiteSpace(s.TrashDirectory))
+                {
+                    a.OutputPath = null;
+                    ctx.PerFile(LogEntry.Info($"重複のため残しました: {a.SourcePath}"));
+                    return false;
+                }
+                var t = await _fileOperator.MoveToTrashAsync(a.SourcePath, s.TrashDirectory, ct).ConfigureAwait(false);
+                _journal.Record(ctx.RunId, OperationKind.Trash, a.SourcePath, t.Path, t.Hash, a.FileSize);
+                await MoveSidecarToTrashAsync(ctx, a, ct).ConfigureAwait(false);
+                a.OutputPath = t.Path;
+                ctx.PerFile(LogEntry.Info($"重複を退避: {a.SourcePath} → {t.Path}"));
+                return true;
+            }
+
+            var r = move
+                ? await _fileOperator.MoveAsync(a.SourcePath, a.OutputPath!, s.VerifyCopies, a.FullHash, ct).ConfigureAwait(false)
+                : await _fileOperator.CopyAsync(a.SourcePath, a.OutputPath!, s.VerifyCopies, a.FullHash, ct).ConfigureAwait(false);
+
+            a.FullHash ??= r.Hash;
+            if (r.Outcome == FileOpOutcome.AlreadyExists)
+            {
+                a.Status = AssetStatus.Skipped;
+                a.OutputPath = r.Path;
+                ctx.PerFile(LogEntry.Info($"スキップ（出力先に同じファイルがあります）: {a.SourcePath}"));
+            }
+            else
+            {
+                _journal.Record(ctx.RunId, kind, a.SourcePath, r.Path, r.Hash, a.FileSize);
+                a.OutputPath = r.Path;
+                a.Status = AssetStatus.Processed;
+                a.ProcessedAt = DateTime.Now;
+                await TransferSidecarAsync(ctx, a, r.Path, move, kind, ct).ConfigureAwait(false);
+                ctx.PerFile(LogEntry.Ok($"{a.SourcePath} → {r.Path}"));
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            a.Status = AssetStatus.Error;
+            a.ErrorMessage = ex.Message;
+            ctx.Add(LogEntry.Error($"{ModeLabel(s.Mode)}できませんでした: {a.SourcePath} - {ex.Message}"));
+        }
+        return false;
+    }
+
+    /// <summary>同じ名前で出力されうるもの同士をまとめるためのキー</summary>
+    private static string DestinationKey(ImageAsset a, AppSettings s)
+    {
+        if (a.Status == AssetStatus.Duplicate)
+            return string.IsNullOrWhiteSpace(s.TrashDirectory)
+                ? "keep:" + a.SourcePath
+                : Path.Combine(s.TrashDirectory, a.FileName);
+        return a.OutputPath ?? a.SourcePath;
     }
 
     private async Task TransferSidecarAsync(RunContext ctx, ImageAsset a, string mainDest, bool move,
