@@ -100,7 +100,7 @@ Shows every photo PhotoExplorer has read so far as a thumbnail grid. Use the dro
 
 - It lists photos the app has read at least once (DRY_RUN runs count too). After organizing, it shows the copy or moved file at its new location.
 - Photos moved or deleted by other tools are hidden by default; check 見つからないファイルも表示 (Show missing files) to see them.
-- Thumbnails are saved after the first view, so they appear instantly next time. Clear them anytime with サムネイルのキャッシュを削除 (Clear thumbnail cache).
+- Thumbnails are saved after the first view, so they appear instantly next time. Clear them anytime with キャッシュ削除 (Clear cache).
 
 ### Statistics (統計)
 

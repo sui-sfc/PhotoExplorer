@@ -127,8 +127,13 @@ public sealed class LibraryViewModel : ViewModelBase
     public DateTime? From         { get => _from;     set { if (SetField(ref _from, value)) Apply(); } }
     public DateTime? To           { get => _to;       set { if (SetField(ref _to, value)) Apply(); } }
     public string Search          { get => _search;   set { if (SetField(ref _search, value ?? "")) Apply(); } }
-    public bool IncludeMissing    { get => _includeMissing;    set { if (SetField(ref _includeMissing, value)) Apply(); } }
-    public bool IncludeDuplicates { get => _includeDuplicates; set { if (SetField(ref _includeDuplicates, value)) Apply(); } }
+    public bool IncludeMissing    { get => _includeMissing;    set { if (SetField(ref _includeMissing, value)) { RefreshFacets(); Apply(); } } }
+    public bool IncludeDuplicates { get => _includeDuplicates; set { if (SetField(ref _includeDuplicates, value)) { RefreshFacets(); Apply(); } } }
+
+    private void RefreshFacets()
+    {
+        if (_loaded && !_suppressApply) BuildFacets();
+    }
     public LibrarySort Sort       { get => _sort;     set { if (SetField(ref _sort, value)) Apply(); } }
 
     /// <summary>カメラ名で選ぶ（スクリーンショット作成など、外部から絞り込むとき用）</summary>
@@ -140,12 +145,15 @@ public sealed class LibraryViewModel : ViewModelBase
         _suppressApply = true;
         try
         {
-            Refill(Cameras, "すべてのカメラ", LibraryService.Facet(_all, p => p.Camera), ref _camera, nameof(Camera));
-            Refill(Lenses, "すべてのレンズ", LibraryService.Facet(_all, p => p.Lens), ref _lens, nameof(Lens));
+            // 件数は「重複も表示」「見つからないファイルも表示」の設定に合わせて数える
+            var visible = _all.Where(p => (_includeMissing || p.Exists)
+                                          && (_includeDuplicates || p.Asset.Status != Domain.Enums.AssetStatus.Duplicate)).ToList();
+            Refill(Cameras, "すべてのカメラ", LibraryService.Facet(visible, p => p.Camera), ref _camera, nameof(Camera));
+            Refill(Lenses, "すべてのレンズ", LibraryService.Facet(visible, p => p.Lens), ref _lens, nameof(Lens));
 
             // 国だけ（例: Japan）と、国 / 都市（例: Japan / Kyoto）の両方を選べるようにする
-            var countries = LibraryService.Facet(_all, p => p.Location?.Split(" / ")[0]);
-            var cities = LibraryService.Facet(_all, p => p.Location is { } l && l.Contains(" / ") ? l : null);
+            var countries = LibraryService.Facet(visible, p => p.Location?.Split(" / ")[0]);
+            var cities = LibraryService.Facet(visible, p => p.Location is { } l && l.Contains(" / ") ? l : null);
             var places = countries.Concat(cities)
                 .OrderBy(x => x.Value, StringComparer.OrdinalIgnoreCase).ToList();
             Refill(Locations, "すべての場所", places, ref _location, nameof(Location));
