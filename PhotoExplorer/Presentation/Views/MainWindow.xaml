@@ -450,6 +450,189 @@
                 </DockPanel>
             </TabItem>
 
+            <!-- ライブラリ -->
+            <TabItem x:Name="LibraryTab" Header="  ライブラリ  ">
+                <DockPanel DataContext="{Binding Library}">
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                        <ComboBox Width="200" Margin="0,0,6,4" ItemsSource="{Binding Cameras}" SelectedItem="{Binding Camera}" ToolTip="カメラで絞り込む"/>
+                        <ComboBox Width="200" Margin="0,0,6,4" ItemsSource="{Binding Lenses}" SelectedItem="{Binding Lens}" ToolTip="レンズで絞り込む"/>
+                        <ComboBox Width="180" Margin="0,0,6,4" ItemsSource="{Binding Locations}" SelectedItem="{Binding Location}" ToolTip="撮影地で絞り込む（GPS 付きの写真のみ）"/>
+                        <ComboBox Width="120" Margin="0,0,6,4" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}"/>
+                        <ComboBox Width="110" Margin="0,0,6,4" ItemsSource="{Binding Ratings}" SelectedItem="{Binding Rating}"/>
+                        <ComboBox Width="150" Margin="0,0,6,4" ItemsSource="{Binding Sorts}" DisplayMemberPath="Value" SelectedValuePath="Key"
+                                  SelectedValue="{Binding Sort}"/>
+                    </WrapPanel>
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <TextBlock Text="撮影日" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker Width="120" SelectedDate="{Binding From}"/>
+                        <TextBlock Text="〜" VerticalAlignment="Center" Margin="4,0"/>
+                        <DatePicker Width="120" SelectedDate="{Binding To}"/>
+                        <TextBlock Text="検索" Style="{StaticResource FieldLabel}" Margin="14,0,8,0"/>
+                        <TextBox Width="170" Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=300}"
+                                 ToolTip="ファイル名・フォルダ名で絞り込む"/>
+                        <CheckBox Content="重複も表示" IsChecked="{Binding IncludeDuplicates}" Margin="14,3,10,3"/>
+                        <CheckBox Content="見つからないファイルも表示" IsChecked="{Binding IncludeMissing}" Margin="0,3,10,3"/>
+                        <Button Content="条件をクリア" Style="{StaticResource SmallButton}" Command="{Binding ClearFiltersCommand}"/>
+                        <TextBlock Text="大きさ" Style="{StaticResource FieldLabel}" Margin="14,0,6,0"/>
+                        <Slider Width="100" Minimum="110" Maximum="320" Value="{Binding ThumbnailSize}" VerticalAlignment="Center"/>
+                        <Button Content="再読み込み" Style="{StaticResource SmallButton}" Command="{Binding ReloadCommand}"
+                                ToolTip="整理の記録から読み直します"/>
+                        <Button Content="サムネイルのキャッシュを削除" Style="{StaticResource LinkButton}" Margin="14,0,0,0"
+                                VerticalAlignment="Center" Command="{Binding ClearCacheCommand}"/>
+                    </WrapPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding Status}" Style="{StaticResource Hint}" Margin="2,0,0,6"/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="340"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ListBox x:Name="LibraryList" ItemsSource="{Binding Rows}" BorderBrush="{StaticResource BorderBrush}"
+                                 HorizontalContentAlignment="Left"
+                                 VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                                 VirtualizingPanel.ScrollUnit="Pixel" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Focusable" Value="False"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <ContentPresenter/>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <ItemsControl ItemsSource="{Binding}" Margin="4,0">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:LibraryItemViewModel}">
+                                                <Border Width="{Binding DataContext.CardWidth, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                        Margin="4" Padding="6" CornerRadius="6" BorderThickness="2" Cursor="Hand"
+                                                        ToolTip="{Binding Tooltip}">
+                                                    <Border.InputBindings>
+                                                        <MouseBinding Gesture="LeftClick"
+                                                                      Command="{Binding DataContext.SelectCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                                      CommandParameter="{Binding}"/>
+                                                        <MouseBinding Gesture="LeftDoubleClick"
+                                                                      Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                                      CommandParameter="{Binding}"/>
+                                                    </Border.InputBindings>
+                                                    <Border.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="開く" Command="{Binding PlacementTarget.Tag.OpenCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                      CommandParameter="{Binding}"/>
+                                                            <MenuItem Header="エクスプローラーで表示" Command="{Binding PlacementTarget.Tag.ShowInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                      CommandParameter="{Binding}"/>
+                                                        </ContextMenu>
+                                                    </Border.ContextMenu>
+                                                    <Border.Tag>
+                                                        <Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                    </Border.Tag>
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="BorderBrush" Value="Transparent"/>
+                                                            <Setter Property="Background" Value="Transparent"/>
+                                                            <Style.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#F1F5F9"/>
+                                                                </Trigger>
+                                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                    <Setter Property="BorderBrush" Value="#2563EB"/>
+                                                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Exists}" Value="False">
+                                                                    <Setter Property="Opacity" Value="0.45"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <StackPanel>
+                                                        <Grid Height="{Binding DataContext.CardHeight, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                              Background="#E2E8F0">
+                                                            <TextBlock Text="{Binding KindLabel}" Style="{StaticResource Hint}"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            <Image Source="{Binding Thumbnail}" Stretch="Uniform"/>
+                                                            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4" CornerRadius="3"
+                                                                    Padding="5,0" Background="#CC1E293B">
+                                                                <TextBlock Text="{Binding KindLabel}" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding KindLabel}" Value="JPEG">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                            </Border>
+                                                            <TextBlock Text="{Binding Stars}" Foreground="#FACC15" FontSize="13"
+                                                                       HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,5,3">
+                                                                <TextBlock.Effect>
+                                                                    <DropShadowEffect ShadowDepth="0" BlurRadius="3" Opacity="0.9"/>
+                                                                </TextBlock.Effect>
+                                                            </TextBlock>
+                                                        </Grid>
+                                                        <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="{Binding Caption}" Style="{StaticResource Hint}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <TextBlock Text="{Binding Status}" Style="{StaticResource Hint}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   MaxWidth="420" TextAlignment="Center"
+                                   Visibility="{Binding HasPhotos, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"/>
+
+                        <!-- プレビューと撮影情報 -->
+                        <Border Grid.Column="1" Margin="8,0,0,0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="10">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0" IsEnabled="{Binding HasSelection}">
+                                    <Button Content="開く" Style="{StaticResource SmallButton}" Margin="0,0,6,0" Command="{Binding OpenCommand}"/>
+                                    <Button Content="エクスプローラーで表示" Style="{StaticResource SmallButton}" Margin="0" Command="{Binding ShowInExplorerCommand}"/>
+                                </StackPanel>
+                                <Grid DockPanel.Dock="Top" Height="250" Background="#0F172A">
+                                    <TextBlock Text="写真をクリックすると、ここに大きく表示します（ダブルクリックで開きます）"
+                                               Foreground="#94A3B8" TextWrapping="Wrap" TextAlignment="Center" Margin="20"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"/>
+                                    <Image Source="{Binding Preview}" Stretch="Uniform"/>
+                                </Grid>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
+                                    <ItemsControl ItemsSource="{Binding SelectedDetails}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,2">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="88"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Key}" Foreground="{StaticResource MutedBrush}"/>
+                                                    <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneWay}" IsReadOnly="True" BorderThickness="0"
+                                                             Background="Transparent" Padding="0" TextWrapping="Wrap"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </TabItem>
+
             <!-- 統計 -->
             <TabItem Header="  統計  ">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">

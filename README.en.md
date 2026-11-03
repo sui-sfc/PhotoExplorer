@@ -38,6 +38,7 @@ You choose the folder layout with a template such as `{yyyy}/{mm}/{dd}/{camera}`
 - **Lets you try first** — `DRY_RUN` mode never touches a file. It only shows where each file would go.
 - **Finds duplicates** — Detects files with identical content by hash and lists them with thumbnails. Extra copies can go to a holding folder or the Windows Recycle Bin.
 - **Lets you undo** — Every copy and move is recorded. One click reverts a run, even an interrupted one or one from days ago.
+- **Library view** — Browse your organized photos as thumbnails. Narrow them down by camera, lens, location, date range or rating, e.g. "only shots from the GR", "4 stars and up", or "taken in Kyoto".
 - **Shows statistics** — Charts by camera, lens, month, location, hour of day and day of week, plus a history of past runs.
 - **Safe to re-run** — Photos already in the destination are skipped, so you can point it at the whole SD card every time without creating duplicates.
 
@@ -90,6 +91,16 @@ If something goes wrong, click ↶ 直前の実行を元に戻す (Undo last run
 ---
 
 ## A tour of the screens
+
+### Library (ライブラリ)
+
+Shows every photo PhotoExplorer has read so far as a thumbnail grid. Use the drop-downs at the top to filter by camera, lens, location, type, star rating and capture date. Click a photo to see it larger on the right, along with its shooting details (lens, aperture, shutter speed, ISO and more); double-click to open it.
+
+![Library, showing only GR photos](docs/images/07-library.png)
+
+- It lists photos the app has read at least once (DRY_RUN runs count too). After organizing, it shows the copy or moved file at its new location.
+- Photos moved or deleted by other tools are hidden by default; check 見つからないファイルも表示 (Show missing files) to see them.
+- Thumbnails are saved after the first view, so they appear instantly next time. Clear them anytime with サムネイルのキャッシュを削除 (Clear thumbnail cache).
 
 ### Statistics (統計)
 

@@ -21,6 +21,17 @@ public partial class MainWindow : Window
         // DatePicker の透かし文字（既定は英語の "Select a date"）を日本語にする
         EventManager.RegisterClassHandler(typeof(DatePicker), LoadedEvent, new RoutedEventHandler(LocalizeDatePicker));
 
+        // ライブラリ: 幅に合わせて 1 行の枚数を変え、タブを初めて開いたときに読み込む
+        LibraryList.SizeChanged += (_, e) => _vm.Library.SetAvailableWidth(e.NewSize.Width - SystemParameters.VerticalScrollBarWidth - 8);
+        MainTabs.SelectionChanged += (_, e) =>
+        {
+            if (e.OriginalSource == MainTabs && MainTabs.SelectedItem == LibraryTab) _ = _vm.Library.EnsureLoadedAsync();
+        };
+        Loaded += (_, _) =>
+        {
+            if (MainTabs.SelectedItem == LibraryTab) _ = _vm.Library.EnsureLoadedAsync();
+        };
+
         AddHandler(PreviewDragOverEvent, new DragEventHandler(OnPreviewDragOver), handledEventsToo: true);
         AddHandler(PreviewDropEvent, new DragEventHandler(OnPreviewDrop), handledEventsToo: true);
     }

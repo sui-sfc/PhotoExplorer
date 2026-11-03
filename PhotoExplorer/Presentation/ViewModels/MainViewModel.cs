@@ -43,8 +43,10 @@ public sealed class MainViewModel : ViewModelBase
         StatsHistoryRepository history,
         IPathResolver pathResolver,
         INormalizer normalizer,
-        MappingConfigProvider mappings)
+        MappingConfigProvider mappings,
+        LibraryService library)
     {
+        Library = new LibraryViewModel(library);
         _useCase = useCase;
         _undo = undo;
         _history = history;
@@ -364,6 +366,7 @@ public sealed class MainViewModel : ViewModelBase
     public ICollectionView AssetsView { get; }
     public ObservableCollection<DuplicateGroupViewModel> DuplicateGroups { get; } = new();
     public StatisticsViewModel Statistics { get; } = new();
+    public LibraryViewModel Library { get; }
 
     /// <summary>ログが追加されたとき（自動スクロール用）</summary>
     public event EventHandler? LogAppended;
@@ -595,6 +598,7 @@ public sealed class MainViewModel : ViewModelBase
             _cts = null;
             OnPropertiesChanged(nameof(ProgressFraction), nameof(ProgressPercentText));
             try { Statistics.LoadHistory(_history); } catch { }
+            _ = Library.ReloadIfLoadedAsync();
             System.Windows.Input.CommandManager.InvalidateRequerySuggested();
         }
     }
@@ -710,6 +714,7 @@ public sealed class MainViewModel : ViewModelBase
             IsRunning = false;
             IsIndeterminate = false;
             Statistics.LoadHistory(_history);
+            _ = Library.ReloadIfLoadedAsync();
         }
     }
 
