@@ -81,12 +81,12 @@ If ExifTool is already on your PATH, it is used automatically. To use a copy som
 1. Set **整理する写真** (Photos to organize) to the folder containing your photos. You can also drag and drop a folder from Explorer.
 2. Set **保存先** (Destination) to the folder where the organized photos should go.
 3. Pick a **フォルダ構成** (Folder layout) from the list or type your own. A preview such as `例: D:\Pictures\2024\07\15\Canon_EOS_R5\IMG_0001.CR3` appears right below it.
-4. Set the mode to **DRY_RUN** and click ▶ 実行 (Run), or press F5. No files are changed.
+4. Set the mode to **DRY_RUN** and click DRY_RUN を実行 (Run DRY_RUN), or press F5. No files are changed.
 5. Check where everything will go on the ファイル一覧 (File list) tab. If it looks right, switch the mode to **COPY** (keep originals) or **MOVE**, and run again.
 
 ![File list](docs/images/02-files.png)
 
-If something goes wrong, click ↶ 直前の実行を元に戻す (Undo last run). Copied files are deleted and moved files return to their original place.
+If something goes wrong, click 直前の実行を元に戻す (Undo last run). Copied files are deleted and moved files return to their original place.
 
 ---
 

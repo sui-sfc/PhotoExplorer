@@ -489,12 +489,12 @@
                 </TabItem.Header>
                 <DockPanel DataContext="{Binding Library}">
                     <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,2">
-                        <ComboBox Width="175" Margin="0,0,6,4" ItemsSource="{Binding Cameras}" SelectedItem="{Binding Camera}" ToolTip="カメラで絞り込む"/>
-                        <ComboBox Width="175" Margin="0,0,6,4" ItemsSource="{Binding Lenses}" SelectedItem="{Binding Lens}" ToolTip="レンズで絞り込む"/>
+                        <ComboBox Width="190" Margin="0,0,6,4" ItemsSource="{Binding Cameras}" SelectedItem="{Binding Camera}" ToolTip="カメラで絞り込む"/>
+                        <ComboBox Width="190" Margin="0,0,6,4" ItemsSource="{Binding Lenses}" SelectedItem="{Binding Lens}" ToolTip="レンズで絞り込む"/>
                         <ComboBox Width="155" Margin="0,0,6,4" ItemsSource="{Binding Locations}" SelectedItem="{Binding Location}" ToolTip="撮影地で絞り込む（GPS 付きの写真のみ）"/>
-                        <ComboBox Width="105" Margin="0,0,6,4" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}"/>
-                        <ComboBox Width="100" Margin="0,0,6,4" ItemsSource="{Binding Ratings}" SelectedItem="{Binding Rating}"/>
-                        <ComboBox Width="135" Margin="0,0,6,4" ItemsSource="{Binding Sorts}" DisplayMemberPath="Value" SelectedValuePath="Key"
+                        <ComboBox Width="150" Margin="0,0,6,4" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}"/>
+                        <ComboBox Width="140" Margin="0,0,6,4" ItemsSource="{Binding Ratings}" SelectedItem="{Binding Rating}"/>
+                        <ComboBox Width="175" Margin="0,0,6,4" ItemsSource="{Binding Sorts}" DisplayMemberPath="Value" SelectedValuePath="Key"
                                   SelectedValue="{Binding Sort}"/>
                     </WrapPanel>
                     <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,4">

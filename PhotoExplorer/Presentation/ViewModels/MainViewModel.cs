@@ -325,9 +325,9 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsIdle => !_isRunning;
     public string StartButtonText => OperationMode switch
     {
-        OperationMode.Copy => "▶ コピーを実行",
-        OperationMode.Move => "▶ 移動を実行",
-        _ => "▶ DRY_RUN を実行",
+        OperationMode.Copy => "コピーを実行",
+        OperationMode.Move => "移動を実行",
+        _ => "DRY_RUN を実行",
     };
 
     public int ProgressTotal { get => _progressTotal; private set => SetField(ref _progressTotal, value); }
