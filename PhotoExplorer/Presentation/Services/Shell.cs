@@ -29,6 +29,9 @@ public static partial class Shell
             Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
     }
 
+    public static void OpenUrl(string url) =>
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+
     public static void OpenInNotepad(string filePath)
     {
         var psi = new ProcessStartInfo("notepad.exe") { UseShellExecute = false };

@@ -69,6 +69,7 @@ public partial class App : WpfApplication
         services.AddSingleton(_ => new StatsHistoryRepository(AppPaths.HistoryDatabase));
         services.AddSingleton(_ => new OperationJournal(AppPaths.HistoryDatabase));
         services.AddSingleton<UndoService>();
+        services.AddSingleton<LibraryService>();
         services.AddSingleton<IOrganizeUseCase, OrganizeUseCase>();
 
         services.AddSingleton<MainViewModel>();

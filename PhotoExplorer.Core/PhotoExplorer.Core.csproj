@@ -7,6 +7,9 @@
     <RootNamespace>PhotoExplorer</RootNamespace>
     <AssemblyName>PhotoExplorer.Core</AssemblyName>
     <LangVersion>latest</LangVersion>
+    <Authors>sui-sfc</Authors>
+    <Copyright>Copyright (c) 2026 sui-sfc</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>

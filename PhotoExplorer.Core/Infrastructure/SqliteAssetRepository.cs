@@ -15,6 +15,9 @@ public interface IAssetRepository
     Task<IReadOnlyDictionary<string, ImageAsset>> LoadByPathsAsync(
         IEnumerable<string> paths, CancellationToken cancellationToken = default);
 
+    /// <summary>保存済みのすべてのファイル情報を返す（ライブラリ表示用）</summary>
+    Task<IReadOnlyList<ImageAsset>> LoadAllAsync(CancellationToken cancellationToken = default);
+
     Task ClearAsync(CancellationToken cancellationToken = default);
 }
 
@@ -143,6 +146,22 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
                 if (!wanted.Contains(path)) continue;
                 results[path] = ReadAsset(reader);
             }
+        }
+        finally { _lock.Release(); }
+        return results;
+    }
+
+    public async Task<IReadOnlyList<ImageAsset>> LoadAllAsync(CancellationToken cancellationToken = default)
+    {
+        var results = new List<ImageAsset>();
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT * FROM Assets ORDER BY Id";
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                results.Add(ReadAsset(reader));
         }
         finally { _lock.Release(); }
         return results;

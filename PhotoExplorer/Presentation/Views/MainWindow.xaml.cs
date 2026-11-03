@@ -5,7 +5,7 @@ using PhotoExplorer.Presentation.ViewModels;
 
 namespace PhotoExplorer.Presentation.Views;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly MainViewModel _vm;
 
@@ -21,6 +21,17 @@ public partial class MainWindow : Window
         // DatePicker の透かし文字（既定は英語の "Select a date"）を日本語にする
         EventManager.RegisterClassHandler(typeof(DatePicker), LoadedEvent, new RoutedEventHandler(LocalizeDatePicker));
 
+        // ライブラリ: 幅に合わせて 1 行の枚数を変え、タブを初めて開いたときに読み込む
+        LibraryList.SizeChanged += (_, e) => _vm.Library.SetAvailableWidth(e.NewSize.Width - SystemParameters.VerticalScrollBarWidth - 8);
+        MainTabs.SelectionChanged += (_, e) =>
+        {
+            if (e.OriginalSource == MainTabs && MainTabs.SelectedItem == LibraryTab) _ = _vm.Library.EnsureLoadedAsync();
+        };
+        Loaded += (_, _) =>
+        {
+            if (MainTabs.SelectedItem == LibraryTab) _ = _vm.Library.EnsureLoadedAsync();
+        };
+
         AddHandler(PreviewDragOverEvent, new DragEventHandler(OnPreviewDragOver), handledEventsToo: true);
         AddHandler(PreviewDropEvent, new DragEventHandler(OnPreviewDrop), handledEventsToo: true);
     }
@@ -30,6 +41,8 @@ public partial class MainWindow : Window
         if (!_vm.AutoScroll || LogListBox.Items.Count == 0) return;
         LogListBox.ScrollIntoView(LogListBox.Items[^1]);
     }
+
+    private const double DefaultLibraryPreviewWidth = 340;
 
     private static void LocalizeDatePicker(object sender, RoutedEventArgs e)
     {
@@ -100,6 +113,9 @@ public partial class MainWindow : Window
 
         if (p.WindowMaximized) WindowState = WindowState.Maximized;
         if (p.SelectedTab >= 0 && p.SelectedTab < MainTabs.Items.Count) MainTabs.SelectedIndex = p.SelectedTab;
+        if (p.LibraryPreviewWidth >= LibraryPreviewColumn.MinWidth)
+            LibraryPreviewColumn.Width = new GridLength(Math.Min(p.LibraryPreviewWidth, 1200));
+        LibrarySplitter.MouseDoubleClick += (_, _) => LibraryPreviewColumn.Width = new GridLength(DefaultLibraryPreviewWidth);
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -119,6 +135,7 @@ public partial class MainWindow : Window
         p.WindowHeight = bounds.Height;
         p.WindowMaximized = WindowState == WindowState.Maximized;
         p.SelectedTab = MainTabs.SelectedIndex;
+        if (LibraryPreviewColumn.ActualWidth > 0) p.LibraryPreviewWidth = LibraryPreviewColumn.ActualWidth;
         _vm.SavePreferences();
         base.OnClosing(e);
     }

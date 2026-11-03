@@ -83,22 +83,36 @@ internal static class ScreenshotRunner
             await RunAndWait(vm);
 
             var tabs = (TabControl)window.FindName("MainTabs");
-            string[] names = ["01-log", "02-files", "03-statistics", "04-duplicates", "05-help"];
-            for (int i = 0; i < names.Length; i++)
+            // タブの並び: 実行ログ / ファイル一覧 / ライブラリ / 統計 / 重複 / ヘルプ
+            (int Tab, string Name)[] shots =
+            [
+                (0, "01-log"), (1, "02-files"), (2, "07-library"), (3, "03-statistics"), (4, "04-duplicates"), (5, "05-help"),
+            ];
+            foreach (var (tab, name) in shots)
             {
-                tabs.SelectedIndex = i;
-                await Settle(window, i == 3 ? 2500 : 600);
-                if (i == 0 && window.FindName("LogListBox") is ListBox log && log.Items.Count > 0)
+                tabs.SelectedIndex = tab;
+                await Settle(window, 600);
+                if (tab == 0 && window.FindName("LogListBox") is ListBox log && log.Items.Count > 0)
                 {
                     // 処理の流れが分かるようにログの先頭を見せる
                     log.ScrollIntoView(log.Items[0]);
                     await Settle(window, 300);
                 }
-                Save(window, Path.Combine(outputDir, names[i] + ".png"));
+                if (tab == 2)
+                {
+                    // GR で撮った写真だけを並べ、1 枚を選んだ状態
+                    await vm.Library.EnsureLoadedAsync();
+                    vm.Library.SelectCamera("RICOH_GR_IIIx");
+                    await Settle(window, 300);
+                    vm.Library.Selected = vm.Library.Rows.FirstOrDefault()?.FirstOrDefault();
+                    await Settle(window, 3000);
+                }
+                if (tab == 4) await Settle(window, 2500);
+                Save(window, Path.Combine(outputDir, name + ".png"));
             }
 
             // 統計タブは縦に長いので全体も保存する
-            tabs.SelectedIndex = 2;
+            tabs.SelectedIndex = 3;
             await Settle(window, 600);
             if (window.FindName("StatsPanel") is FrameworkElement stats)
                 Save(stats, Path.Combine(outputDir, "03-statistics-full.png"));
