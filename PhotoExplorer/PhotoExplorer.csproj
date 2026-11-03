@@ -14,6 +14,10 @@
     <Version>2.1.0</Version>
     <Product>PhotoExplorer</Product>
     <Description>EXIF をもとに写真を整理するツール</Description>
+    <Authors>sui-sfc</Authors>
+    <Company>sui-sfc</Company>
+    <Copyright>Copyright (c) 2026 sui-sfc</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <!-- dotnet publish -c Release で exe 1 つにまとめる -->
@@ -31,6 +35,16 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PhotoExplorer.Core\PhotoExplorer.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ライセンス表記を exe と一緒に配布する -->
+    <None Include="..\LICENSE;..\THIRD_PARTY_NOTICES.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      <Link>%(Filename)%(Extension)</Link>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

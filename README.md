@@ -267,3 +267,11 @@ GitHub Actions の「CI」ワークフローを手動実行（Run workflow）す
 ### リリースの作り方
 
 コミットメッセージに `[release]` を入れるか、GitHub Actions の「CI」ワークフローを「release」にチェックを入れて手動実行すると、`PhotoExplorer-win-x64.zip` を作って Releases に公開します。バージョンは `PhotoExplorer/PhotoExplorer.csproj` の `Version` が使われます。
+
+## ライセンス
+
+[MIT License](LICENSE) です。Copyright (c) 2026 sui-sfc
+
+改変・再配布・商用利用は自由にできます。その際は、著作権表示（`Copyright (c) 2026 sui-sfc`）とライセンス文を残してください。
+
+使用しているオープンソースソフトウェアは [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にまとめています。ExifTool（作者: Phil Harvey）は同梱していません。

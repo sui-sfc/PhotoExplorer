@@ -269,3 +269,11 @@ Run the "CI" workflow manually (Run workflow) in GitHub Actions to recapture the
 ### Publishing a release
 
 Include `[release]` in a commit message, or run the "CI" workflow manually with "release" checked. The workflow builds `PhotoExplorer-win-x64.zip` and publishes it to Releases. The version comes from `Version` in `PhotoExplorer/PhotoExplorer.csproj`.
+
+## License
+
+[MIT License](LICENSE). Copyright (c) 2026 sui-sfc
+
+You are free to modify, redistribute and use it commercially, as long as you keep the copyright notice (`Copyright (c) 2026 sui-sfc`) and the license text.
+
+Open-source components used by PhotoExplorer are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). ExifTool (by Phil Harvey) is not bundled.
