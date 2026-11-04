@@ -51,7 +51,6 @@ D:\Pictures
 - .NET のインストールは不要です。
 - 初回起動時に「Windows によって PC が保護されました」と表示されたら、「詳細情報」→「実行」を押してください。
 
-自分でビルドする場合は [開発者向け](#開発者向け) を参照してください。
 
 ### 2. exiftool を用意する
 
@@ -204,7 +203,7 @@ Microsoft Store の「HEIF 画像拡張機能」「Raw 画像拡張機能」を�
 `%LocalAppData%\PhotoExplorer` です（「ヘルプ」タブから開けます）。`PhotoExplorer.exe` と同じ場所に `portable.txt` という空のファイルを置くと、隣の `Data` フォルダに保存する「ポータブルモード」になり、USB メモリに入れて持ち歩けます。
 
 **Mac や Linux で使える？**
-画面部分は Windows 専用（WPF）です。整理の処理本体（`PhotoExplorer.Core`）は Windows 以外でも動くように作ってあり、テストは Linux でも実行しています。
+Windows 専用です（Windows 10 / 11）。
 
 ### キーボードショートカット
 
@@ -216,57 +215,6 @@ Microsoft Store の「HEIF 画像拡張機能」「Raw 画像拡張機能」を�
 | Ctrl + E | ファイル一覧を CSV で保存 |
 
 ---
-
-## 開発者向け
-
-### 必要なもの
-
-- .NET 8 SDK
-- exiftool（テストの一部と、スクリーンショット作成で使用）
-
-### ビルド・テスト・発行
-
-```powershell
-dotnet build PhotoExplorer.sln
-dotnet test  PhotoExplorer.Tests/PhotoExplorer.Tests.csproj
-
-# exe 1 つにまとめる（publish フォルダに出力）
-dotnet publish PhotoExplorer/PhotoExplorer.csproj -c Release -o publish
-```
-
-`PhotoExplorer/Resources` に置いた exiftool は、ビルド・発行時に `Resources` フォルダごと出力へコピーされます。
-
-### 構成
-
-```
-PhotoExplorer.Core/        整理の処理本体（net8.0、OS に依存しない）
-├── Domain/                ImageAsset・ExifData・対応形式・テンプレート変数
-├── Application/           OrganizeUseCase（全体の流れ）・UndoService・統計・CSV・設定チェック
-└── Infrastructure/        ファイル探索・exiftool・ハッシュ・コピー/移動・SQLite・設定ファイル
-PhotoExplorer/             WPF アプリ（MVVM）
-PhotoExplorer.Tests/       xUnit テスト（実際の exiftool を使う結合テストを含む）
-```
-
-処理の流れ:
-
-```
-探す → 撮影情報を読む（キャッシュ / exiftool をまとめて実行）→ 日付で絞り込む
-     → 名前を整える → 行き先を決める → 重複を探す → コピー・移動（記録・検証）→ 保存
-```
-
-### スクリーンショットの作り直し
-
-README の画像は、GitHub Actions の Windows 上でアプリを実際に動かして撮ったものです。風景画のデモ写真（カメラ名・撮影日・GPS 付き）を自動で作って DRY_RUN と COPY を実行し、各タブを画像にします。
-
-```powershell
-publish\PhotoExplorer.exe --screenshots docs\images
-```
-
-GitHub Actions の「CI」ワークフローを手動実行（Run workflow）すると、Windows 上で撮り直してコミットします。
-
-### リリースの作り方
-
-コミットメッセージに `[release]` を入れるか、GitHub Actions の「CI」ワークフローを「release」にチェックを入れて手動実行すると、`PhotoExplorer-win-x64.zip` を作って Releases に公開します。バージョンは `PhotoExplorer/PhotoExplorer.csproj` の `Version` が使われます。
 
 ## ライセンス
 
