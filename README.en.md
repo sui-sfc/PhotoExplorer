@@ -53,7 +53,6 @@ Open **[Releases (latest)](https://github.com/sui-sfc/PhotoExplorer/releases/lat
 - No .NET installation is required.
 - If Windows shows "Windows protected your PC" on first launch, click "More info" → "Run anyway".
 
-To build it yourself, see [For developers](#for-developers).
 
 ### 2. Get ExifTool
 
@@ -206,7 +205,7 @@ PhotoExplorer remembers the metadata it read last time and reuses it for files t
 In `%LocalAppData%\PhotoExplorer` (you can open it from the ヘルプ (Help) tab). Put an empty file named `portable.txt` next to `PhotoExplorer.exe` to switch to portable mode: data is then stored in a `Data` folder beside the exe, so you can carry it on a USB stick.
 
 **Does it run on macOS or Linux?**
-The user interface is Windows-only (WPF). The organizing engine (`PhotoExplorer.Core`) is cross-platform, and its tests also run on Linux.
+No, it is Windows-only (Windows 10 / 11).
 
 ### Keyboard shortcuts
 
@@ -218,57 +217,6 @@ The user interface is Windows-only (WPF). The organizing engine (`PhotoExplorer.
 | Ctrl + E | Export file list as CSV |
 
 ---
-
-## For developers
-
-### Requirements
-
-- .NET 8 SDK
-- ExifTool (used by some tests and by the screenshot generator)
-
-### Build, test, publish
-
-```powershell
-dotnet build PhotoExplorer.sln
-dotnet test  PhotoExplorer.Tests/PhotoExplorer.Tests.csproj
-
-# Single-file exe (written to the publish folder)
-dotnet publish PhotoExplorer/PhotoExplorer.csproj -c Release -o publish
-```
-
-Anything you put in `PhotoExplorer/Resources` (such as ExifTool) is copied to the output's `Resources` folder on build and publish.
-
-### Project layout
-
-```
-PhotoExplorer.Core/        Organizing engine (net8.0, OS-independent)
-├── Domain/                ImageAsset, ExifData, supported formats, template variables
-├── Application/           OrganizeUseCase (overall flow), UndoService, statistics, CSV, settings checks
-└── Infrastructure/        File scanning, ExifTool, hashing, copy/move, SQLite, settings files
-PhotoExplorer/             WPF app (MVVM)
-PhotoExplorer.Tests/       xUnit tests (including integration tests that run the real ExifTool)
-```
-
-Processing flow:
-
-```
-Scan → read metadata (cache / batched ExifTool) → filter by date
-     → normalize names → resolve destinations → find duplicates → copy/move (journaled, verified) → save
-```
-
-### Regenerating screenshots
-
-The README images were captured by running the real app on Windows in GitHub Actions. It generates demo landscape photos (with camera, date and GPS metadata), runs DRY_RUN and COPY, and saves each tab as an image.
-
-```powershell
-publish\PhotoExplorer.exe --screenshots docs\images
-```
-
-Run the "CI" workflow manually (Run workflow) in GitHub Actions to recapture the screenshots on Windows and commit them.
-
-### Publishing a release
-
-Include `[release]` in a commit message, or run the "CI" workflow manually with "release" checked. The workflow builds `PhotoExplorer-win-x64.zip` and publishes it to Releases. The version comes from `Version` in `PhotoExplorer/PhotoExplorer.csproj`.
 
 ## License
 

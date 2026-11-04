@@ -63,7 +63,7 @@ internal static class ScreenshotRunner
 
             await Task.Run(() => CreateDemoPhotos(photos));
 
-            window.Width = 1280;
+            window.Width = 1440;
             window.Height = 1000;
             window.WindowState = WindowState.Normal;
             window.Left = 0;
@@ -86,7 +86,7 @@ internal static class ScreenshotRunner
             // タブの並び: 実行ログ / ファイル一覧 / ライブラリ / 統計 / 重複 / ヘルプ
             (int Tab, string Name)[] shots =
             [
-                (0, "01-log"), (1, "02-files"), (2, "07-library"), (3, "03-statistics"), (4, "04-duplicates"), (5, "05-help"),
+                (0, "01-log"), (1, "02-files"), (2, "07-library"), (3, "03-statistics"), (4, "04-duplicates"),
             ];
             foreach (var (tab, name) in shots)
             {
@@ -110,12 +110,6 @@ internal static class ScreenshotRunner
                 if (tab == 4) await Settle(window, 2500);
                 Save(window, Path.Combine(outputDir, name + ".png"));
             }
-
-            // 統計タブは縦に長いので全体も保存する
-            tabs.SelectedIndex = 3;
-            await Settle(window, 600);
-            if (window.FindName("StatsPanel") is FrameworkElement stats)
-                Save(stats, Path.Combine(outputDir, "03-statistics-full.png"));
 
             // 詳細オプションを開いた状態
             tabs.SelectedIndex = 0;
