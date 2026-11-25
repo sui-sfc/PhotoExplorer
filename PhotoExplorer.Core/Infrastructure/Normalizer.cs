@@ -73,8 +73,11 @@ public sealed partial class Normalizer : INormalizer
     public Normalizer(MappingConfig? mappings = null)
         : this(MappingConfigProvider.Fixed(mappings ?? new MappingConfig())) { }
 
-    private MappingConfig? _cachedConfig;
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _lensCache = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>レンズ名の変換結果のキャッシュ。どの設定で計算したものかと一緒に入れ替える</summary>
+    private sealed record LensCache(MappingConfig Config,
+        System.Collections.Concurrent.ConcurrentDictionary<string, string> Map);
+
+    private LensCache? _lensCache;
 
     public string NormalizeCamera(params string?[] candidates)
     {
@@ -98,17 +101,21 @@ public sealed partial class Normalizer : INormalizer
         if (string.IsNullOrWhiteSpace(rawLens)) return "Unknown";
         var trimmed = rawLens.Trim();
         var cfg = _mappings.Current;
-        if (!ReferenceEquals(cfg, _cachedConfig))
+
+        // 設定が読み直されたら、新しい設定用のキャッシュに丸ごと入れ替える。
+        // 古い設定で計算した結果が新しい設定のキャッシュに混ざらないよう、計算に使った設定のキャッシュにだけ書く。
+        var cache = Volatile.Read(ref _lensCache);
+        if (cache == null || !ReferenceEquals(cache.Config, cfg))
         {
-            _lensCache.Clear();
-            _cachedConfig = cfg;
+            cache = new LensCache(cfg, new(StringComparer.OrdinalIgnoreCase));
+            Volatile.Write(ref _lensCache, cache);
         }
-        if (_lensCache.TryGetValue(trimmed, out var cached)) return cached;
+        if (cache.Map.TryGetValue(trimmed, out var cached)) return cached;
 
         var names = new List<string>(1) { trimmed };
         var resolved = Lookup(names, cfg.Lens, cfg.GetLensByLength(), BuiltinLensMap, BuiltinLensByLength)
                        ?? SanitizeForPath(trimmed);
-        if (_lensCache.Count < 4096) _lensCache[trimmed] = resolved;
+        if (cache.Map.Count < 4096) cache.Map[trimmed] = resolved;
         return resolved;
     }
 

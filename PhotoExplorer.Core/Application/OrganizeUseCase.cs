@@ -434,11 +434,13 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
 
         var start = s.FilterStartDate?.Date ?? DateTime.MinValue;
         var end = s.FilterEndDate.HasValue ? s.FilterEndDate.Value.Date.AddDays(1).AddTicks(-1) : DateTime.MaxValue;
-        int filtered = 0;
+        int filtered = 0, dateOutCount = 0, ratingOutCount = 0;
         foreach (var a in ctx.Assets)
         {
             bool dateOut = hasDate && (a.BestDate < start || a.BestDate > end);
             bool ratingOut = hasRating && Math.Clamp(a.Exif?.Rating ?? 0, 0, 5) < s.MinRating;
+            if (dateOut) dateOutCount++;
+            if (ratingOut) ratingOutCount++;
             if (dateOut || ratingOut)
             {
                 a.Status = AssetStatus.Filtered;
@@ -446,13 +448,15 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
                 filtered++;
             }
         }
+        // 件数はそれぞれの条件で外れた数（両方で外れたものは両方に数える）。最後に合計の対象数を出す
         if (hasDate)
         {
             var range = $"{(s.FilterStartDate.HasValue ? start.ToString("yyyy/MM/dd") : "")}〜{(s.FilterEndDate.HasValue ? end.ToString("yyyy/MM/dd") : "")}";
-            ctx.Add(LogEntry.Info($"日付フィルタ {range}: 対象 {ctx.Assets.Count - filtered:N0} 件 / 対象外 {filtered:N0} 件"));
+            ctx.Add(LogEntry.Info($"日付フィルタ {range}: 対象外 {dateOutCount:N0} 件"));
         }
         if (hasRating)
-            ctx.Add(LogEntry.Info($"レーティングフィルタ ★{s.MinRating} 以上: 対象 {ctx.Assets.Count - filtered:N0} 件 / 対象外 {filtered:N0} 件"));
+            ctx.Add(LogEntry.Info($"レーティングフィルタ ★{s.MinRating} 以上: 対象外 {ratingOutCount:N0} 件"));
+        ctx.Add(LogEntry.Info($"絞り込みの結果: 対象 {ctx.Assets.Count - filtered:N0} 件 / 対象外 {filtered:N0} 件"));
         return filtered;
     }
 

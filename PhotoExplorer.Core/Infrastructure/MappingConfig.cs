@@ -13,26 +13,16 @@ public sealed class MappingConfig
     /// <summary>レンズ名マッピング: 元の名前 → 表示名</summary>
     public Dictionary<string, string> Lens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    private KeyValuePair<string, string>[]? _cameraByLength;
-    private KeyValuePair<string, string>[]? _lensByLength;
-    private int _cameraCount = -1, _lensCount = -1;
+    /// <summary>
+    /// 部分一致用にキー長降順で並べた一覧。
+    /// 置き換え設定は数十件程度なので毎回並べ直す（件数が同じまま中身が変わっても古い結果を使わないため）。
+    /// </summary>
+    internal KeyValuePair<string, string>[] GetCameraByLength() => SortByKeyLength(Camera);
 
-    /// <summary>部分一致用にキー長降順でソート済みの配列を返す（変更がなければキャッシュを再利用）</summary>
-    internal KeyValuePair<string, string>[] GetCameraByLength()
-    {
-        if (_cameraByLength != null && _cameraCount == Camera.Count) return _cameraByLength;
-        _cameraCount = Camera.Count;
-        return _cameraByLength = Camera.Where(p => !string.IsNullOrWhiteSpace(p.Key))
-            .OrderByDescending(p => p.Key.Length).ToArray();
-    }
+    internal KeyValuePair<string, string>[] GetLensByLength() => SortByKeyLength(Lens);
 
-    internal KeyValuePair<string, string>[] GetLensByLength()
-    {
-        if (_lensByLength != null && _lensCount == Lens.Count) return _lensByLength;
-        _lensCount = Lens.Count;
-        return _lensByLength = Lens.Where(p => !string.IsNullOrWhiteSpace(p.Key))
-            .OrderByDescending(p => p.Key.Length).ToArray();
-    }
+    private static KeyValuePair<string, string>[] SortByKeyLength(Dictionary<string, string> map) =>
+        map.Where(p => !string.IsNullOrWhiteSpace(p.Key)).OrderByDescending(p => p.Key.Length).ToArray();
 
     /// <summary>JSON を読み込む。構文エラーなどは例外になる。</summary>
     public static MappingConfig Load(string path)

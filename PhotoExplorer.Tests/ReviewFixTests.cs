@@ -62,3 +62,34 @@ public class ReviewFixTests
         Assert.Equal(new DateTime(2024, 7, 1), saved[t["in/gps.jpg"]].Exif?.EffectiveDate);
     }
 }
+
+public class MappingReloadTests
+{
+    [Fact]
+    public void LensMapping_IsReloadedWhenMappingsFileChanges()
+    {
+        using var t = new TempDir();
+        var path = t["mappings.json"];
+        File.WriteAllText(path, """{ "Camera": {}, "Lens": { "FE 24-70mm F2.8 GM II": "Old" } }""");
+        var provider = new MappingConfigProvider(path);
+        var n = new Normalizer(provider);
+        Assert.Equal("Old", n.NormalizeLens("FE 24-70mm F2.8 GM II"));
+
+        // 同じ件数のまま中身だけ変える
+        File.WriteAllText(path, """{ "Camera": {}, "Lens": { "FE 24-70mm F2.8 GM II": "New" } }""");
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(5));
+        Assert.Equal("New", n.NormalizeLens("FE 24-70mm F2.8 GM II"));
+    }
+
+    [Fact]
+    public void CameraMapping_SeesEditsThatKeepTheSameCount()
+    {
+        var cfg = new MappingConfig();
+        cfg.Camera["ILCE-7M4"] = "A";
+        var n = new Normalizer(cfg);
+        Assert.Equal("A", n.NormalizeCamera("SONY ILCE-7M4"));
+        cfg.Camera.Remove("ILCE-7M4");
+        cfg.Camera["ILCE-7"] = "B";
+        Assert.Equal("B", n.NormalizeCamera("SONY ILCE-7M4"));
+    }
+}
