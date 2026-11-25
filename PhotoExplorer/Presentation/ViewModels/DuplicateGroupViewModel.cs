@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Media;
+using System.Windows.Threading;
 using PhotoExplorer.Domain.Entities;
 using PhotoExplorer.Presentation.Converters;
 using PhotoExplorer.Presentation.Services;
@@ -11,7 +12,7 @@ public sealed class DuplicateGroupViewModel
     public DuplicateGroupViewModel(string groupId, IEnumerable<ImageAsset> files)
     {
         GroupId = groupId;
-        foreach (var f in files) Files.Add(new DuplicateFileViewModel(f));
+        foreach (var f in files) Files.Add(new DuplicateFileViewModel(f, this));
     }
 
     public string GroupId { get; }
@@ -21,6 +22,14 @@ public sealed class DuplicateGroupViewModel
 
     public string Summary =>
         $"{Files.FirstOrDefault()?.FileName}  —  同じ内容のファイル {Files.Count} 件（{FileSizeConverter.Format(Files.FirstOrDefault()?.Asset.FileSize ?? 0)} ずつ）";
+
+    /// <summary>グループ内で「残す」ファイルを切り替える</summary>
+    public void SetKept(DuplicateFileViewModel chosen)
+    {
+        if (chosen.IsRemoved || chosen.IsKept) return;
+        foreach (var f in Files)
+            f.SetKeptState(ReferenceEquals(f, chosen));
+    }
 }
 
 public sealed class DuplicateFileViewModel : ViewModelBase
@@ -29,9 +38,14 @@ public sealed class DuplicateFileViewModel : ViewModelBase
     private bool _thumbnailRequested;
     private bool _isRemoved;
 
-    public DuplicateFileViewModel(ImageAsset asset) => Asset = asset;
+    public DuplicateFileViewModel(ImageAsset asset, DuplicateGroupViewModel group)
+    {
+        Asset = asset;
+        Group = group;
+    }
 
     public ImageAsset Asset { get; }
+    public DuplicateGroupViewModel Group { get; }
     public bool IsKept => Asset.IsKeptInDuplicateGroup;
     public string Badge => IsKept ? "残す" : "重複";
     public string FileName => Asset.FileName;
@@ -57,10 +71,18 @@ public sealed class DuplicateFileViewModel : ViewModelBase
     public bool IsRemoved
     {
         get => _isRemoved;
-        set { if (SetField(ref _isRemoved, value)) OnPropertyChanged(nameof(CanRecycle)); }
+        set { if (SetField(ref _isRemoved, value)) OnPropertiesChanged(nameof(CanRecycle), nameof(CanSetKept)); }
     }
 
     public bool CanRecycle => !IsKept && !IsRemoved;
+    public bool CanSetKept => !IsKept && !IsRemoved;
+
+    internal void SetKeptState(bool kept)
+    {
+        if (Asset.IsKeptInDuplicateGroup == kept) return;
+        Asset.IsKeptInDuplicateGroup = kept;
+        OnPropertiesChanged(nameof(IsKept), nameof(Badge), nameof(CanRecycle), nameof(CanSetKept));
+    }
 
     /// <summary>初めて表示されたときに読み込む</summary>
     public ImageSource? Thumbnail
@@ -80,10 +102,10 @@ public sealed class DuplicateFileViewModel : ViewModelBase
     {
         var img = await ThumbnailLoader.LoadAsync(CurrentPath);
         if (img == null) return;
-        WpfApplication.Current?.Dispatcher.Invoke(() =>
+        _ = WpfApplication.Current?.Dispatcher.InvokeAsync(() =>
         {
             _thumbnail = img;
             OnPropertyChanged(nameof(Thumbnail));
-        });
+        }, DispatcherPriority.Background);
     }
 }

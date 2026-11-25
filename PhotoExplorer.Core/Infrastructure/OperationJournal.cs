@@ -16,12 +16,27 @@ public sealed record JournalEntry(
 public sealed class OperationJournal : IDisposable
 {
     private readonly SqliteConnection _connection;
+    private readonly SqliteCommand _insertCmd;
+    private readonly SqliteParameter _pRunId, _pKind, _pSource, _pDest, _pHash, _pSize, _pAt;
     private readonly object _lock = new();
 
     public OperationJournal(string databasePath)
     {
         _connection = Open(databasePath);
         EnsureSchema(_connection);
+        _insertCmd = _connection.CreateCommand();
+        _insertCmd.CommandText = """
+            INSERT INTO Operations (RunId, Kind, Source, Destination, Hash, Size, At)
+            VALUES (@R, @K, @S, @D, @H, @Z, @A)
+            """;
+        _pRunId  = _insertCmd.Parameters.Add("@R", SqliteType.Text);
+        _pKind   = _insertCmd.Parameters.Add("@K", SqliteType.Text);
+        _pSource = _insertCmd.Parameters.Add("@S", SqliteType.Text);
+        _pDest   = _insertCmd.Parameters.Add("@D", SqliteType.Text);
+        _pHash   = _insertCmd.Parameters.Add("@H", SqliteType.Text);
+        _pSize   = _insertCmd.Parameters.Add("@Z", SqliteType.Integer);
+        _pAt     = _insertCmd.Parameters.Add("@A", SqliteType.Text);
+        _insertCmd.Prepare();
     }
 
     internal static void EnsureSchema(SqliteConnection conn) => Execute(conn, """
@@ -42,19 +57,14 @@ public sealed class OperationJournal : IDisposable
     {
         lock (_lock)
         {
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO Operations (RunId, Kind, Source, Destination, Hash, Size, At)
-                VALUES (@R, @K, @S, @D, @H, @Z, @A)
-                """;
-            cmd.Parameters.AddWithValue("@R", runId);
-            cmd.Parameters.AddWithValue("@K", kind.ToString());
-            cmd.Parameters.AddWithValue("@S", source);
-            cmd.Parameters.AddWithValue("@D", destination);
-            cmd.Parameters.AddWithValue("@H", Db(hash));
-            cmd.Parameters.AddWithValue("@Z", size);
-            cmd.Parameters.AddWithValue("@A", Db(DateTime.Now));
-            cmd.ExecuteNonQuery();
+            _pRunId.Value  = runId;
+            _pKind.Value   = kind.ToString();
+            _pSource.Value = source;
+            _pDest.Value   = destination;
+            _pHash.Value   = Db(hash);
+            _pSize.Value   = size;
+            _pAt.Value     = Db(DateTime.Now);
+            _insertCmd.ExecuteNonQuery();
         }
     }
 
@@ -67,21 +77,28 @@ public sealed class OperationJournal : IDisposable
             cmd.CommandText = "SELECT * FROM Operations WHERE RunId = @R ORDER BY Id";
             cmd.Parameters.AddWithValue("@R", runId);
             using var r = cmd.ExecuteReader();
+            int oId = r.GetOrdinal("Id"), oRunId = r.GetOrdinal("RunId"), oKind = r.GetOrdinal("Kind"),
+                oSrc = r.GetOrdinal("Source"), oDest = r.GetOrdinal("Destination"),
+                oHash = r.GetOrdinal("Hash"), oSize = r.GetOrdinal("Size"), oAt = r.GetOrdinal("At");
             while (r.Read())
             {
                 list.Add(new JournalEntry(
-                    r.GetInt64(r.GetOrdinal("Id")),
-                    r.GetString(r.GetOrdinal("RunId")),
-                    Enum.TryParse<OperationKind>(Str(r, "Kind"), out var k) ? k : OperationKind.Copy,
-                    r.GetString(r.GetOrdinal("Source")),
-                    r.GetString(r.GetOrdinal("Destination")),
-                    Str(r, "Hash"),
-                    r.GetInt64(r.GetOrdinal("Size")),
-                    Date(r, "At") ?? DateTime.MinValue));
+                    r.GetInt64(oId),
+                    r.GetString(oRunId),
+                    Enum.TryParse<OperationKind>(r.IsDBNull(oKind) ? null : r.GetString(oKind), out var k) ? k : OperationKind.Copy,
+                    r.GetString(oSrc),
+                    r.GetString(oDest),
+                    r.IsDBNull(oHash) ? null : r.GetString(oHash),
+                    r.GetInt64(oSize),
+                    ParseDate(r.IsDBNull(oAt) ? null : r.GetString(oAt)) ?? DateTime.MinValue));
             }
             return list;
         }
     }
 
-    public void Dispose() => _connection.Dispose();
+    public void Dispose()
+    {
+        _insertCmd.Dispose();
+        _connection.Dispose();
+    }
 }

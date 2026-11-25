@@ -27,6 +27,9 @@ public sealed class AppSettings
     public DateTime? FilterStartDate { get; set; }
     public DateTime? FilterEndDate { get; set; }
 
+    /// <summary>対象にする最低レーティング（0 ならすべて対象、1〜5 ならその★以上のみ）</summary>
+    public int MinRating { get; set; }
+
     /// <summary>動画（mp4/mov など）も対象にする</summary>
     public bool IncludeVideos { get; set; }
 
@@ -41,6 +44,9 @@ public sealed class AppSettings
 
     /// <summary>前回読み取った EXIF・ハッシュを再利用する（ファイルが変わっていない場合のみ）</summary>
     public bool UseMetadataCache { get; set; } = true;
+
+    /// <summary>MOVE 実行後に空になった入力側のサブフォルダを自動で削除する</summary>
+    public bool CleanEmptySourceFolders { get; set; }
 
     /// <summary>EXIF 日付がないファイルの置き場所（空ならファイル日時でテンプレートに従う）</summary>
     public string NoDateFolderName { get; set; } = string.Empty;

@@ -16,7 +16,7 @@ public enum RunPhase
 }
 
 /// <summary>進捗。Total が 0 のときは件数不明（不確定表示）</summary>
-public sealed record OrganizeProgress(RunPhase Phase, int Total, int Done, string CurrentFile, string Message);
+public sealed record OrganizeProgress(RunPhase Phase, int Total, int Done, string CurrentFile, string Message, long ProcessedBytes = 0);
 
 public sealed record DuplicateGroup(string GroupId, IReadOnlyList<ImageAsset> Files);
 

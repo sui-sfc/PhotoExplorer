@@ -23,6 +23,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         // ライブラリ: 幅に合わせて 1 行の枚数を変え、タブを初めて開いたときに読み込む
         LibraryList.SizeChanged += (_, e) => _vm.Library.SetAvailableWidth(e.NewSize.Width - SystemParameters.VerticalScrollBarWidth - 8);
+        LibraryList.PreviewMouseDown += (_, _) => LibraryList.Focus();
+        LibraryList.PreviewKeyDown += OnLibraryKeyDown;
         MainTabs.SelectionChanged += (_, e) =>
         {
             if (e.OriginalSource == MainTabs && MainTabs.SelectedItem == LibraryTab) _ = _vm.Library.EnsureLoadedAsync();
@@ -34,6 +36,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         AddHandler(PreviewDragOverEvent, new DragEventHandler(OnPreviewDragOver), handledEventsToo: true);
         AddHandler(PreviewDropEvent, new DragEventHandler(OnPreviewDrop), handledEventsToo: true);
+    }
+
+    private void OnLibraryKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        IReadOnlyList<LibraryItemViewModel>? targetRow = e.Key switch
+        {
+            System.Windows.Input.Key.Left  => _vm.Library.MoveSelection(-1),
+            System.Windows.Input.Key.Right => _vm.Library.MoveSelection(1),
+            System.Windows.Input.Key.Up    => _vm.Library.MoveSelectionRow(-1),
+            System.Windows.Input.Key.Down  => _vm.Library.MoveSelectionRow(1),
+            _ => null,
+        };
+        if (targetRow != null)
+        {
+            LibraryList.ScrollIntoView(targetRow);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == System.Windows.Input.Key.Enter && _vm.Library.OpenCommand.CanExecute(null))
+        {
+            _vm.Library.OpenCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     private void ScrollLogToEnd()

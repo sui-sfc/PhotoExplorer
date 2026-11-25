@@ -43,6 +43,9 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
         ("DuplicateGroupId", "TEXT"), ("IsKeptInDuplicateGroup", "INTEGER NOT NULL DEFAULT 1"),
     ];
 
+    private static readonly bool CaseInsensitivePaths = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+    private const int LookupBatchSize = 500;
+
     public SqliteAssetRepository(string databasePath)
     {
         _connection = Open(databasePath);
@@ -54,6 +57,8 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
             )
             """);
         AddMissingColumns(_connection, "Assets", Columns.Skip(2));
+        if (CaseInsensitivePaths)
+            Execute(_connection, "CREATE INDEX IF NOT EXISTS IX_Assets_SourcePath_NoCase ON Assets(SourcePath COLLATE NOCASE)");
     }
 
     public async Task SaveAllAsync(IEnumerable<ImageAsset> assets, CancellationToken cancellationToken = default)
@@ -73,53 +78,55 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
                 {string.Join(",\n", names.Skip(1).Select(n => $"{n} = excluded.{n}"))}
                 """;
             // 型は値から推論させる（INTEGER/REAL/TEXT が混在するため）
-            var p = names.ToDictionary(n => n, n =>
+            var p = new SqliteParameter[names.Length];
+            for (int i = 0; i < names.Length; i++)
             {
                 var prm = cmd.CreateParameter();
-                prm.ParameterName = "@" + n;
+                prm.ParameterName = "@" + names[i];
                 cmd.Parameters.Add(prm);
-                return prm;
-            });
+                p[i] = prm;
+            }
+            cmd.Prepare();
 
             foreach (var a in assets)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var e = a.Exif;
-                p["SourcePath"].Value             = a.SourcePath;
-                p["FileSize"].Value               = a.FileSize;
-                p["FileCreatedAt"].Value          = Db(a.FileCreatedAt);
-                p["FileModifiedAt"].Value         = Db(a.FileModifiedAt);
-                p["PartialHash"].Value            = Db(a.PartialHash);
-                p["FullHash"].Value               = Db(a.FullHash);
-                p["MetadataExtracted"].Value      = a.MetadataExtracted ? 1 : 0;
-                p["DateTimeOriginal"].Value       = Db(e?.DateTimeOriginal);
-                p["CreateDate"].Value             = Db(e?.CreateDate);
-                p["ModifyDate"].Value             = Db(e?.ModifyDate);
-                p["Make"].Value                   = Db(e?.Make);
-                p["Model"].Value                  = Db(e?.Model);
-                p["LensModel"].Value              = Db(e?.LensModel);
-                p["FocalLength"].Value            = Db(e?.FocalLength);
-                p["Aperture"].Value               = Db(e?.Aperture);
-                p["ShutterSpeed"].Value           = Db(e?.ShutterSpeed);
-                p["ISO"].Value                    = Db(e?.ISO);
-                p["ImageWidth"].Value             = Db(e?.ImageWidth);
-                p["ImageHeight"].Value            = Db(e?.ImageHeight);
-                p["Rating"].Value                 = Db(e?.Rating);
-                p["UsedDateField"].Value          = Db(e?.UsedDateField);
-                p["GPSLatitude"].Value            = Db(e?.GPSLatitude);
-                p["GPSLongitude"].Value           = Db(e?.GPSLongitude);
-                p["GeolocationCity"].Value        = Db(e?.GeolocationCity);
-                p["GeolocationRegion"].Value      = Db(e?.GeolocationRegion);
-                p["GeolocationCountry"].Value     = Db(e?.GeolocationCountry);
-                p["GeolocationCountryCode"].Value = Db(e?.GeolocationCountryCode);
-                p["NormalizedCamera"].Value       = Db(a.NormalizedCamera);
-                p["NormalizedLens"].Value         = Db(a.NormalizedLens);
-                p["OutputPath"].Value             = Db(a.OutputPath);
-                p["Status"].Value                 = a.Status.ToString();
-                p["ErrorMessage"].Value           = Db(a.ErrorMessage);
-                p["ProcessedAt"].Value            = Db(a.ProcessedAt);
-                p["DuplicateGroupId"].Value       = Db(a.DuplicateGroupId);
-                p["IsKeptInDuplicateGroup"].Value = a.IsKeptInDuplicateGroup ? 1 : 0;
+                p[0].Value  = a.SourcePath;
+                p[1].Value  = a.FileSize;
+                p[2].Value  = Db(a.FileCreatedAt);
+                p[3].Value  = Db(a.FileModifiedAt);
+                p[4].Value  = Db(a.PartialHash);
+                p[5].Value  = Db(a.FullHash);
+                p[6].Value  = a.MetadataExtracted ? 1 : 0;
+                p[7].Value  = Db(e?.DateTimeOriginal);
+                p[8].Value  = Db(e?.CreateDate);
+                p[9].Value  = Db(e?.ModifyDate);
+                p[10].Value = Db(e?.Make);
+                p[11].Value = Db(e?.Model);
+                p[12].Value = Db(e?.LensModel);
+                p[13].Value = Db(e?.FocalLength);
+                p[14].Value = Db(e?.Aperture);
+                p[15].Value = Db(e?.ShutterSpeed);
+                p[16].Value = Db(e?.ISO);
+                p[17].Value = Db(e?.ImageWidth);
+                p[18].Value = Db(e?.ImageHeight);
+                p[19].Value = Db(e?.Rating);
+                p[20].Value = Db(e?.UsedDateField);
+                p[21].Value = Db(e?.GPSLatitude);
+                p[22].Value = Db(e?.GPSLongitude);
+                p[23].Value = Db(e?.GeolocationCity);
+                p[24].Value = Db(e?.GeolocationRegion);
+                p[25].Value = Db(e?.GeolocationCountry);
+                p[26].Value = Db(e?.GeolocationCountryCode);
+                p[27].Value = Db(a.NormalizedCamera);
+                p[28].Value = Db(a.NormalizedLens);
+                p[29].Value = Db(a.OutputPath);
+                p[30].Value = a.Status.ToString();
+                p[31].Value = Db(a.ErrorMessage);
+                p[32].Value = Db(a.ProcessedAt);
+                p[33].Value = Db(a.DuplicateGroupId);
+                p[34].Value = a.IsKeptInDuplicateGroup ? 1 : 0;
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
             tx.Commit();
@@ -130,21 +137,35 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
     public async Task<IReadOnlyDictionary<string, ImageAsset>> LoadByPathsAsync(
         IEnumerable<string> paths, CancellationToken cancellationToken = default)
     {
-        var wanted = new HashSet<string>(paths, PathUtil.Comparer);
-        var results = new Dictionary<string, ImageAsset>(PathUtil.Comparer);
-        if (wanted.Count == 0) return results;
+        var distinct = paths.Distinct(PathUtil.Comparer).ToList();
+        var results = new Dictionary<string, ImageAsset>(distinct.Count, PathUtil.Comparer);
+        if (distinct.Count == 0) return results;
 
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT * FROM Assets";
-            using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            var collate = CaseInsensitivePaths ? " COLLATE NOCASE" : "";
+            for (int offset = 0; offset < distinct.Count; offset += LookupBatchSize)
             {
-                var path = reader.GetString(reader.GetOrdinal("SourcePath"));
-                if (!wanted.Contains(path)) continue;
-                results[path] = ReadAsset(reader);
+                cancellationToken.ThrowIfCancellationRequested();
+                int count = Math.Min(LookupBatchSize, distinct.Count - offset);
+                using var cmd = _connection.CreateCommand();
+                var placeholders = new string[count];
+                for (int i = 0; i < count; i++)
+                {
+                    var name = "@p" + i;
+                    placeholders[i] = name;
+                    cmd.Parameters.AddWithValue(name, distinct[offset + i]);
+                }
+                cmd.CommandText = $"SELECT * FROM Assets WHERE SourcePath{collate} IN ({string.Join(",", placeholders)})";
+
+                using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                var ord = new Ordinals(reader);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    var asset = ReadAsset(reader, in ord);
+                    results[asset.SourcePath] = asset;
+                }
             }
         }
         finally { _lock.Release(); }
@@ -160,8 +181,9 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = "SELECT * FROM Assets ORDER BY Id";
             using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            var ord = new Ordinals(reader);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                results.Add(ReadAsset(reader));
+                results.Add(ReadAsset(reader, in ord));
         }
         finally { _lock.Release(); }
         return results;
@@ -174,50 +196,95 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
         finally { _lock.Release(); }
     }
 
-    private static ImageAsset ReadAsset(SqliteDataReader r)
+    private readonly struct Ordinals(SqliteDataReader r)
+    {
+        public readonly int Id                     = r.GetOrdinal("Id");
+        public readonly int SourcePath             = r.GetOrdinal("SourcePath");
+        public readonly int FileSize               = r.GetOrdinal("FileSize");
+        public readonly int FileCreatedAt          = r.GetOrdinal("FileCreatedAt");
+        public readonly int FileModifiedAt         = r.GetOrdinal("FileModifiedAt");
+        public readonly int PartialHash            = r.GetOrdinal("PartialHash");
+        public readonly int FullHash               = r.GetOrdinal("FullHash");
+        public readonly int MetadataExtracted      = r.GetOrdinal("MetadataExtracted");
+        public readonly int NormalizedCamera       = r.GetOrdinal("NormalizedCamera");
+        public readonly int NormalizedLens         = r.GetOrdinal("NormalizedLens");
+        public readonly int OutputPath             = r.GetOrdinal("OutputPath");
+        public readonly int Status                 = r.GetOrdinal("Status");
+        public readonly int ErrorMessage           = r.GetOrdinal("ErrorMessage");
+        public readonly int ProcessedAt            = r.GetOrdinal("ProcessedAt");
+        public readonly int DuplicateGroupId       = r.GetOrdinal("DuplicateGroupId");
+        public readonly int IsKeptInDuplicateGroup = r.GetOrdinal("IsKeptInDuplicateGroup");
+        public readonly int DateTimeOriginal       = r.GetOrdinal("DateTimeOriginal");
+        public readonly int CreateDate             = r.GetOrdinal("CreateDate");
+        public readonly int ModifyDate             = r.GetOrdinal("ModifyDate");
+        public readonly int Make                   = r.GetOrdinal("Make");
+        public readonly int Model                  = r.GetOrdinal("Model");
+        public readonly int LensModel              = r.GetOrdinal("LensModel");
+        public readonly int FocalLength            = r.GetOrdinal("FocalLength");
+        public readonly int Aperture               = r.GetOrdinal("Aperture");
+        public readonly int ShutterSpeed           = r.GetOrdinal("ShutterSpeed");
+        public readonly int ISO                    = r.GetOrdinal("ISO");
+        public readonly int ImageWidth             = r.GetOrdinal("ImageWidth");
+        public readonly int ImageHeight            = r.GetOrdinal("ImageHeight");
+        public readonly int Rating                 = r.GetOrdinal("Rating");
+        public readonly int UsedDateField          = r.GetOrdinal("UsedDateField");
+        public readonly int GPSLatitude            = r.GetOrdinal("GPSLatitude");
+        public readonly int GPSLongitude           = r.GetOrdinal("GPSLongitude");
+        public readonly int GeolocationCity        = r.GetOrdinal("GeolocationCity");
+        public readonly int GeolocationRegion      = r.GetOrdinal("GeolocationRegion");
+        public readonly int GeolocationCountry     = r.GetOrdinal("GeolocationCountry");
+        public readonly int GeolocationCountryCode = r.GetOrdinal("GeolocationCountryCode");
+    }
+
+    private static string? Str(SqliteDataReader r, int ord) => r.IsDBNull(ord) ? null : r.GetString(ord);
+    private static int? Int(SqliteDataReader r, int ord) => r.IsDBNull(ord) ? null : r.GetInt32(ord);
+    private static double? Real(SqliteDataReader r, int ord) => r.IsDBNull(ord) ? null : r.GetDouble(ord);
+    private static DateTime? Date(SqliteDataReader r, int ord) => ParseDate(Str(r, ord));
+
+    private static ImageAsset ReadAsset(SqliteDataReader r, in Ordinals o)
     {
         var asset = new ImageAsset
         {
-            Id                     = r.GetInt64(r.GetOrdinal("Id")),
-            SourcePath             = r.GetString(r.GetOrdinal("SourcePath")),
-            FileSize               = r.GetInt64(r.GetOrdinal("FileSize")),
-            FileCreatedAt          = Date(r, "FileCreatedAt") ?? default,
-            FileModifiedAt         = Date(r, "FileModifiedAt") ?? default,
-            PartialHash            = Str(r, "PartialHash"),
-            FullHash               = Str(r, "FullHash"),
-            MetadataExtracted      = Int(r, "MetadataExtracted") == 1,
-            NormalizedCamera       = Str(r, "NormalizedCamera"),
-            NormalizedLens         = Str(r, "NormalizedLens"),
-            OutputPath             = Str(r, "OutputPath"),
-            Status                 = Enum.TryParse<AssetStatus>(Str(r, "Status"), out var s) ? s : AssetStatus.Scanned,
-            ErrorMessage           = Str(r, "ErrorMessage"),
-            ProcessedAt            = Date(r, "ProcessedAt"),
-            DuplicateGroupId       = Str(r, "DuplicateGroupId"),
-            IsKeptInDuplicateGroup = Int(r, "IsKeptInDuplicateGroup") != 0,
+            Id                     = r.GetInt64(o.Id),
+            SourcePath             = r.GetString(o.SourcePath),
+            FileSize               = r.GetInt64(o.FileSize),
+            FileCreatedAt          = Date(r, o.FileCreatedAt) ?? default,
+            FileModifiedAt         = Date(r, o.FileModifiedAt) ?? default,
+            PartialHash            = Str(r, o.PartialHash),
+            FullHash               = Str(r, o.FullHash),
+            MetadataExtracted      = Int(r, o.MetadataExtracted) == 1,
+            NormalizedCamera       = Str(r, o.NormalizedCamera),
+            NormalizedLens         = Str(r, o.NormalizedLens),
+            OutputPath             = Str(r, o.OutputPath),
+            Status                 = Enum.TryParse<AssetStatus>(Str(r, o.Status), out var s) ? s : AssetStatus.Scanned,
+            ErrorMessage           = Str(r, o.ErrorMessage),
+            ProcessedAt            = Date(r, o.ProcessedAt),
+            DuplicateGroupId       = Str(r, o.DuplicateGroupId),
+            IsKeptInDuplicateGroup = Int(r, o.IsKeptInDuplicateGroup) != 0,
         };
 
         var exif = new ExifData
         {
-            DateTimeOriginal       = Date(r, "DateTimeOriginal"),
-            CreateDate             = Date(r, "CreateDate"),
-            ModifyDate             = Date(r, "ModifyDate"),
-            Make                   = Str(r, "Make"),
-            Model                  = Str(r, "Model"),
-            LensModel              = Str(r, "LensModel"),
-            FocalLength            = Str(r, "FocalLength"),
-            Aperture               = Str(r, "Aperture"),
-            ShutterSpeed           = Str(r, "ShutterSpeed"),
-            ISO                    = Str(r, "ISO"),
-            ImageWidth             = Int(r, "ImageWidth"),
-            ImageHeight            = Int(r, "ImageHeight"),
-            Rating                 = Int(r, "Rating"),
-            UsedDateField          = Str(r, "UsedDateField"),
-            GPSLatitude            = Real(r, "GPSLatitude"),
-            GPSLongitude           = Real(r, "GPSLongitude"),
-            GeolocationCity        = Str(r, "GeolocationCity"),
-            GeolocationRegion      = Str(r, "GeolocationRegion"),
-            GeolocationCountry     = Str(r, "GeolocationCountry"),
-            GeolocationCountryCode = Str(r, "GeolocationCountryCode"),
+            DateTimeOriginal       = Date(r, o.DateTimeOriginal),
+            CreateDate             = Date(r, o.CreateDate),
+            ModifyDate             = Date(r, o.ModifyDate),
+            Make                   = Str(r, o.Make),
+            Model                  = Str(r, o.Model),
+            LensModel              = Str(r, o.LensModel),
+            FocalLength            = Str(r, o.FocalLength),
+            Aperture               = Str(r, o.Aperture),
+            ShutterSpeed           = Str(r, o.ShutterSpeed),
+            ISO                    = Str(r, o.ISO),
+            ImageWidth             = Int(r, o.ImageWidth),
+            ImageHeight            = Int(r, o.ImageHeight),
+            Rating                 = Int(r, o.Rating),
+            UsedDateField          = Str(r, o.UsedDateField),
+            GPSLatitude            = Real(r, o.GPSLatitude),
+            GPSLongitude           = Real(r, o.GPSLongitude),
+            GeolocationCity        = Str(r, o.GeolocationCity),
+            GeolocationRegion      = Str(r, o.GeolocationRegion),
+            GeolocationCountry     = Str(r, o.GeolocationCountry),
+            GeolocationCountryCode = Str(r, o.GeolocationCountryCode),
         };
         asset.Exif = exif.IsEmpty ? null : exif;
         return asset;

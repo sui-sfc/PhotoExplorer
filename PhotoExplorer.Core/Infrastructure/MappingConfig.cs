@@ -13,6 +13,27 @@ public sealed class MappingConfig
     /// <summary>レンズ名マッピング: 元の名前 → 表示名</summary>
     public Dictionary<string, string> Lens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    private KeyValuePair<string, string>[]? _cameraByLength;
+    private KeyValuePair<string, string>[]? _lensByLength;
+    private int _cameraCount = -1, _lensCount = -1;
+
+    /// <summary>部分一致用にキー長降順でソート済みの配列を返す（変更がなければキャッシュを再利用）</summary>
+    internal KeyValuePair<string, string>[] GetCameraByLength()
+    {
+        if (_cameraByLength != null && _cameraCount == Camera.Count) return _cameraByLength;
+        _cameraCount = Camera.Count;
+        return _cameraByLength = Camera.Where(p => !string.IsNullOrWhiteSpace(p.Key))
+            .OrderByDescending(p => p.Key.Length).ToArray();
+    }
+
+    internal KeyValuePair<string, string>[] GetLensByLength()
+    {
+        if (_lensByLength != null && _lensCount == Lens.Count) return _lensByLength;
+        _lensCount = Lens.Count;
+        return _lensByLength = Lens.Where(p => !string.IsNullOrWhiteSpace(p.Key))
+            .OrderByDescending(p => p.Key.Length).ToArray();
+    }
+
     /// <summary>JSON を読み込む。構文エラーなどは例外になる。</summary>
     public static MappingConfig Load(string path)
     {

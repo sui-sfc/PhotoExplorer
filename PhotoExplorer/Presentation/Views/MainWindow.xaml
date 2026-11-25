@@ -236,15 +236,18 @@
                         <TextBlock Text="{Binding MaxParallelism}" Width="24" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
                     </WrapPanel>
 
-                    <!-- 日付フィルタ -->
-                    <TextBlock Grid.Row="6" Text="撮影日で絞る" Style="{StaticResource FieldLabel}"/>
+                    <!-- 日付・レーティングフィルタ -->
+                    <TextBlock Grid.Row="6" Text="絞り込み" Style="{StaticResource FieldLabel}"/>
                     <WrapPanel Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,2">
                         <DatePicker Width="120" SelectedDate="{Binding FilterStartDate}" ToolTip="この日以降に撮影した写真だけを対象にする"/>
                         <TextBlock Text="〜" VerticalAlignment="Center" Margin="4,0"/>
                         <DatePicker Width="120" SelectedDate="{Binding FilterEndDate}" ToolTip="この日までに撮影した写真だけを対象にする"/>
+                        <ComboBox Width="120" Margin="10,0,0,0" ItemsSource="{Binding MinRatingOptions}"
+                                  DisplayMemberPath="Value" SelectedValuePath="Key" SelectedValue="{Binding MinRating}"
+                                  ToolTip="指定した★以上の写真だけを整理対象にします"/>
                         <Button Content="解除" Style="{StaticResource SmallButton}" MinWidth="40" Command="{Binding ClearFilterCommand}"
                                 Visibility="{Binding HasDateFilter, Converter={StaticResource BoolToVis}}"/>
-                        <TextBlock Text="（空欄ならすべての写真が対象）" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        <TextBlock Text="（未指定ならすべての写真が対象）" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="10,0,0,0"/>
                     </WrapPanel>
 
                     <!-- 詳細オプション -->
@@ -258,6 +261,8 @@
                                           ToolTip="書き込んだファイルを読み直して、元と同じかを確認します（少し遅くなりますが安全です）"/>
                                 <CheckBox Content="重複を探す" IsChecked="{Binding DetectDuplicates}"/>
                                 <CheckBox Content="前回の読み取り結果を再利用（2回目以降が速くなる）" IsChecked="{Binding UseMetadataCache}"/>
+                                <CheckBox Content="MOVE 後に空になった入力フォルダを削除" IsChecked="{Binding CleanEmptySourceFolders}"
+                                          ToolTip="移動後に空になったサブフォルダを自動で片付けます（入力フォルダ自体は残ります）"/>
                             </WrapPanel>
                             <WrapPanel Margin="0,2,0,0">
                                 <CheckBox Content="撮影日がないファイルは次のフォルダにまとめる:" IsChecked="{Binding UseNoDateFolder}" Margin="0,3,6,3"/>
@@ -326,10 +331,10 @@
                 <StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Symbol="Warning24" Foreground="#B45309" Margin="0,0,6,0"/>
-                        <TextBlock Text="exiftool が見つかりません" FontWeight="Bold" Foreground="#92400E"/>
+                        <TextBlock Text="exiftool が見つかりません（JPEG / 標準 RAW は内蔵リーダーで対応）" FontWeight="Bold" Foreground="#92400E"/>
                     </StackPanel>
                     <TextBlock TextWrapping="Wrap" Foreground="#92400E" Margin="0,2,0,0">
-                        撮影日やカメラ名を読むには exiftool（無料）が必要です。exiftool.org から Windows 版（64-bit の zip）をダウンロードし、
+                        HEIC・CR3・動画や GPS からの都市名変換（{city} 等）には exiftool（無料）が必要です。exiftool.org から Windows 版（64-bit の zip）をダウンロードし、
                         中の exiftool(-k).exe と exiftool_files フォルダを Resources フォルダに入れて「再確認」を押してください。
                     </TextBlock>
                 </StackPanel>
@@ -341,8 +346,9 @@
                 BorderThickness="1" CornerRadius="8" Padding="14,8" Margin="0,0,0,8">
             <StackPanel>
                 <Grid>
-                    <TextBlock Text="{Binding ProgressMessage}" TextTrimming="CharacterEllipsis" Margin="0,0,260,0" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding ProgressMessage}" TextTrimming="CharacterEllipsis" Margin="0,0,340,0" FontWeight="SemiBold"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="{Binding ThroughputText}" Style="{StaticResource Hint}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,0,12,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding EtaText}" Style="{StaticResource Hint}" Margin="0,0,12,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource Hint}" Margin="0,0,12,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding ProgressPercentText}" FontWeight="Bold" VerticalAlignment="Center"/>
@@ -503,8 +509,8 @@
                         <TextBlock Text="〜" VerticalAlignment="Center" Margin="4,0,4,4"/>
                         <DatePicker Width="115" SelectedDate="{Binding To}" Margin="0,0,0,4"/>
                         <TextBlock Text="検索" Style="{StaticResource FieldLabel}" Margin="12,0,6,4"/>
-                        <TextBox Width="140" Margin="0,0,0,4" Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=300}"
-                                 ToolTip="ファイル名・フォルダ名で絞り込む"/>
+                        <TextBox Width="160" Margin="0,0,0,4" Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=300}"
+                                 ToolTip="ファイル名・フォルダ・カメラ・レンズ・撮影地で絞り込む"/>
                         <CheckBox Content="重複も表示" IsChecked="{Binding IncludeDuplicates}" Margin="12,0,8,4"/>
                         <CheckBox Content="見つからないファイルも表示" IsChecked="{Binding IncludeMissing}" Margin="0,0,8,4"/>
                         <Button Content="条件をクリア" Style="{StaticResource SmallButton}" Margin="0,0,0,4" Command="{Binding ClearFiltersCommand}"/>
@@ -513,7 +519,9 @@
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <TextBlock Text="大きさ" Style="{StaticResource FieldLabel}" Margin="0,0,6,0"/>
                             <Slider Width="100" Minimum="110" Maximum="320" Value="{Binding ThumbnailSize}" VerticalAlignment="Center"/>
-                            <Button Content="再読み込み" Style="{StaticResource SmallButton}" Margin="10,0,0,0" Command="{Binding ReloadCommand}"
+                            <Button Content="CSV 保存" Style="{StaticResource SmallButton}" Margin="10,0,0,0" Command="{Binding ExportCsvCommand}"
+                                    ToolTip="現在絞り込んでいる一覧を CSV で保存します"/>
+                            <Button Content="再読み込み" Style="{StaticResource SmallButton}" Margin="6,0,0,0" Command="{Binding ReloadCommand}"
                                     ToolTip="整理の記録から読み直します"/>
                             <Button Content="キャッシュ削除" Style="{StaticResource LinkButton}" Margin="10,0,0,0" VerticalAlignment="Center"
                                     Command="{Binding ClearCacheCommand}" ToolTip="保存してあるサムネイルを削除します（写真は消えません）"/>
@@ -554,7 +562,7 @@
                         </GridSplitter>
 
                         <ListBox x:Name="LibraryList" ItemsSource="{Binding Rows}" BorderBrush="{StaticResource BorderBrush}"
-                                 HorizontalContentAlignment="Left"
+                                 HorizontalContentAlignment="Left" Focusable="True"
                                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                                  VirtualizingPanel.ScrollUnit="Pixel" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                             <ListBox.ItemContainerStyle>
@@ -595,6 +603,8 @@
                                                             <MenuItem Header="開く" Command="{Binding PlacementTarget.Tag.OpenCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                                       CommandParameter="{Binding}"/>
                                                             <MenuItem Header="エクスプローラーで表示" Command="{Binding PlacementTarget.Tag.ShowInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                      CommandParameter="{Binding}"/>
+                                                            <MenuItem Header="パスをコピー" Command="{Binding PlacementTarget.Tag.CopyPathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                                       CommandParameter="{Binding}"/>
                                                         </ContextMenu>
                                                     </Border.ContextMenu>
@@ -670,7 +680,7 @@
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <Grid Background="#0F172A">
-                                    <TextBlock Text="写真をクリックすると、ここに大きく表示します（ダブルクリックで開きます）"
+                                    <TextBlock Text="写真をクリックすると、ここに大きく表示します（矢印キーで移動・ダブルクリック/Enter で開きます）"
                                                Foreground="#94A3B8" TextWrapping="Wrap" TextAlignment="Center" Margin="20"
                                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                                Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"/>
@@ -693,10 +703,13 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </ScrollViewer>
-                                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0" IsEnabled="{Binding HasSelection}">
+                                <WrapPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0" IsEnabled="{Binding HasSelection}">
                                     <Button Content="開く" Style="{StaticResource SmallButton}" Margin="0,0,6,0" Command="{Binding OpenCommand}"/>
-                                    <Button Content="エクスプローラーで表示" Style="{StaticResource SmallButton}" Margin="0" Command="{Binding ShowInExplorerCommand}"/>
-                                </StackPanel>
+                                    <Button Content="エクスプローラーで表示" Style="{StaticResource SmallButton}" Margin="0,0,6,0" Command="{Binding ShowInExplorerCommand}"/>
+                                    <Button Content="地図で開く" Style="{StaticResource SmallButton}" Margin="0" Command="{Binding OpenInMapCommand}"
+                                            Visibility="{Binding HasSelectedGps, Converter={StaticResource BoolToVis}}"
+                                            ToolTip="撮影地点（GPS 座標）を Google マップで開きます"/>
+                                </WrapPanel>
                             </Grid>
                         </Border>
                     </Grid>
@@ -773,6 +786,12 @@
                                         <ItemsControl ItemsSource="{Binding Statistics.LensChart}" ItemTemplate="{StaticResource BarTemplate}"/>
                                     </StackPanel>
                                 </Border>
+                                <Border Style="{StaticResource ChartCard}" Visibility="{Binding Statistics.HasFocalLengths, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource SectionHeader}" Text="焦点距離別"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.FocalLengthChart}" ItemTemplate="{StaticResource BarTemplate}"/>
+                                    </StackPanel>
+                                </Border>
                                 <Border Style="{StaticResource ChartCard}" Visibility="{Binding Statistics.HasLocations, Converter={StaticResource BoolToVis}}">
                                     <StackPanel>
                                         <TextBlock Style="{StaticResource SectionHeader}" Text="撮影地"/>
@@ -804,6 +823,12 @@
                                     <StackPanel>
                                         <TextBlock Style="{StaticResource SectionHeader}" Text="形式別"/>
                                         <ItemsControl ItemsSource="{Binding Statistics.ExtChart}" ItemTemplate="{StaticResource BarTemplate}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource ChartCard}" Visibility="{Binding Statistics.HasIsos, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource SectionHeader}" Text="ISO 感度別"/>
+                                        <ItemsControl ItemsSource="{Binding Statistics.IsoChart}" ItemTemplate="{StaticResource BarTemplate}"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -931,7 +956,17 @@
                                                                 <Grid Height="150" Background="#E2E8F0">
                                                                     <TextBlock Text="プレビューなし" Style="{StaticResource Hint}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                                     <Image Source="{Binding Thumbnail}" Stretch="Uniform"/>
-                                                                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" CornerRadius="4" Padding="6,1" Background="#C2410C">
+                                                                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" CornerRadius="4" Padding="6,1">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="Background" Value="#C2410C"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsKept}" Value="True">
+                                                                                        <Setter Property="Background" Value="#15803D"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
                                                                         <TextBlock Text="{Binding Badge}" Foreground="White" FontWeight="Bold" FontSize="11"/>
                                                                     </Border>
                                                                 </Grid>
@@ -939,11 +974,14 @@
                                                                 <TextBlock Text="{Binding Folder}" Style="{StaticResource Hint}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Folder}"/>
                                                                 <TextBlock Text="{Binding Details}" Style="{StaticResource Hint}"/>
                                                                 <WrapPanel Margin="0,6,0,0">
-                                                                    <Button Content="場所を開く" Padding="6,1" Margin="0,0,4,0"
+                                                                    <Button Content="場所を開く" Padding="6,1" Margin="0,0,4,2"
                                                                             Command="{Binding DataContext.ShowInExplorerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
-                                                                    <Button Content="開く" Padding="6,1" Margin="0,0,4,0"
+                                                                    <Button Content="開く" Padding="6,1" Margin="0,0,4,2"
                                                                             Command="{Binding DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
-                                                                    <Button Content="ごみ箱へ" Padding="6,1"
+                                                                    <Button Content="これを残す" Padding="6,1" Margin="0,0,4,2"
+                                                                            Visibility="{Binding CanSetKept, Converter={StaticResource BoolToVis}}"
+                                                                            Command="{Binding DataContext.KeepDuplicateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                                                    <Button Content="ごみ箱へ" Padding="6,1" Margin="0,0,0,2"
                                                                             Visibility="{Binding CanRecycle, Converter={StaticResource BoolToVis}}"
                                                                             Command="{Binding DataContext.RecycleDuplicateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
                                                                 </WrapPanel>

@@ -93,23 +93,25 @@ If something goes wrong, click 直前の実行を元に戻す (Undo last run). C
 
 ### Library (ライブラリ)
 
-Shows every photo PhotoExplorer has read so far as a thumbnail grid. Use the drop-downs at the top to filter by camera, lens, location, type, star rating and capture date. Click a photo to see it larger on the right, along with its shooting details (lens, aperture, shutter speed, ISO and more); double-click to open it.
+Shows every photo PhotoExplorer has read so far as a thumbnail grid. Use the drop-downs at the top to filter by camera, lens, location, type, star rating, capture date, or search text (matches file path, camera, lens, and location). Click a photo — or browse with arrow keys — to see it larger on the right along with its shooting details. Double-click or press Enter to open it, or click 地図で開く (Open in map) to view GPS-tagged shots in Google Maps.
 
 ![Library, showing only GR photos](docs/images/07-library.png)
 
 - It lists photos the app has read at least once (DRY_RUN runs count too). After organizing, it shows the copy or moved file at its new location.
+- RAW thumbnails and previews are extracted directly from embedded JPEG previews, so they display quickly without needing extra Windows codecs.
 - Photos moved or deleted by other tools are hidden by default; check 見つからないファイルも表示 (Show missing files) to see them.
+- Export the currently filtered grid to CSV anytime via CSV 保存 (Export CSV).
 - Thumbnails are saved after the first view, so they appear instantly next time. Clear them anytime with キャッシュ削除 (Clear cache).
 
 ### Statistics (統計)
 
-Charts show your camera and lens mix, the hours and weekdays you shoot most, where you shoot, and more. From the run history (実行履歴) below, you can undo any past run individually.
+Charts show your camera and lens mix, focal lengths, ISO values, the hours and weekdays you shoot most, where you shoot, and more. From the run history (実行履歴) below, you can undo any past run individually.
 
 ![Statistics](docs/images/03-statistics.png)
 
 ### Duplicates (重複)
 
-Files with identical content are grouped together with thumbnails. A green frame marks the file to keep (残す) and an orange frame marks the extra copy (重複). Names that look like copies, such as "(1)" or "- コピー" ("- Copy"), are treated as the extras.
+Files with identical content are grouped together with thumbnails. A green frame marks the file to keep (残す) and an orange frame marks the extra copy (重複). Copy-like names ("(1)", "- コピー") and backup folders are treated as extras, while files with XMP sidecars are preferred. Click これを残す (Keep this) on any card to swap which copy is kept.
 
 ![Duplicates](docs/images/04-duplicates.png)
 
@@ -123,7 +125,8 @@ Files with identical content are grouped together with thumbnails. A green frame
 | XMP サイドカーも一緒に動かす (Move XMP sidecars too) | Keeps `IMG_0001.xmp` or `IMG_0001.CR3.xmp` next to its photo, and renames the sidecar when the photo is renamed |
 | コピー後に中身を検証する (Verify after copying) | Re-reads each written file and compares hashes with the original |
 | 重複を探す (Find duplicates) | Turn off for a slightly faster run |
-| 前回の読み取り結果を再利用 (Reuse previous results) | Unchanged files skip ExifTool, so repeat runs are much faster |
+| 前回の読み取り結果を再利用 (Reuse previous results) | Unchanged files reuse cached metadata, making repeat runs much faster |
+| MOVE 後に空になった入力フォルダを削除 (Clean empty source folders after MOVE) | Automatically removes subfolders under the input folder that become empty after moving (never deletes the input root itself) |
 | 撮影日がないファイルをまとめる (Group files with no capture date) | Collects files without a capture date, such as scans, into a folder like `_NoDate`. When off, the file's own timestamp is used |
 | 詳細ログ (Verbose log) | Logs what was read from every single file, for when photos aren't sorted as expected |
 
@@ -137,11 +140,13 @@ Each `/`-separated part becomes a folder. The file-name template accepts the sam
 |---|---|---|
 | `{yyyy}` / `{yy}` | Capture year (4 / 2 digits) | 2024 / 24 |
 | `{mm}` / `{MMM}` | Capture month (2 digits / English abbreviation) | 07 / Jul |
-| `{dd}` | Capture day | 15 |
+| `{dd}` / `{ddd}` | Capture day / Weekday (3-letter English) | 15 / Mon |
 | `{HH}` `{min}` `{ss}` | Capture hour, minute, second | 09 05 42 |
 | `{camera}` | Camera name | Canon_EOS_R5 |
 | `{make}` | Manufacturer | Canon |
 | `{lens}` | Lens name | Canon_RF24-105_F4L |
+| `{focal}` / `{iso}` | Focal length / ISO | 50mm / ISO400 |
+| `{orientation}` | Orientation (Landscape / Portrait / Square) | Landscape |
 | `{type}` | Kind (JPEG / RAW / HEIF / VIDEO) | RAW |
 | `{ext}` | File extension | cr3 |
 | `{rating}` | Star rating (0 if none) | 4 |

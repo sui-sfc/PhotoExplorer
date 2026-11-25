@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
+using System.IO.Enumeration;
 using PhotoExplorer.Domain;
+using PhotoExplorer.Domain.Enums;
 
 namespace PhotoExplorer.Infrastructure;
 
@@ -22,9 +25,20 @@ public interface IFileScanner
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>対応拡張子のファイルを再帰的に列挙する</summary>
+/// <summary>
+/// 対応拡張子のファイルを再帰的に列挙する。
+/// 1 ディレクトリ 1 回のシステムコール（FileSystemEnumerable）＋サブフォルダ並列探索で高速化する。
+/// </summary>
 public sealed class FileScanner : IFileScanner
 {
+    private readonly record struct DirEntry(
+        string FullPath,
+        string Name,
+        bool IsDirectory,
+        long Length,
+        DateTime CreatedAt,
+        DateTime ModifiedAt);
+
     public Task<IReadOnlyList<ScannedFile>> ScanAsync(
         string rootDirectory,
         ScanOptions options,
@@ -37,113 +51,194 @@ public sealed class FileScanner : IFileScanner
         // 大きなフォルダでも UI が固まらないようスレッドプールで実行する
         return Task.Run<IReadOnlyList<ScannedFile>>(() =>
         {
-            var excluded = (options.ExcludedDirectories ?? [])
-                .Where(d => !string.IsNullOrWhiteSpace(d))
-                .Select(PathUtil.NormalizeDirectory)
-                .ToList();
+            var excluded = new HashSet<string>(
+                (options.ExcludedDirectories ?? [])
+                    .Where(d => !string.IsNullOrWhiteSpace(d))
+                    .Select(PathUtil.NormalizeDirectory),
+                PathUtil.Comparer);
 
-            var results = new List<ScannedFile>();
-            var pending = new Stack<DirectoryInfo>();
-            pending.Push(new DirectoryInfo(rootDirectory));
-            bool isRoot = true;
+            var rootPath = PathUtil.NormalizeDirectory(rootDirectory);
+            if (excluded.Contains(rootPath)) return [];
 
-            while (pending.Count > 0)
+            var results = new ConcurrentBag<ScannedFile>();
+            var pending = new ConcurrentQueue<(string Path, bool IsRoot)>();
+            pending.Enqueue((rootPath, true));
+
+            int activeWorkers = 0;
+            int found = 0;
+            int maxWorkers = Math.Clamp(Environment.ProcessorCount, 2, 8);
+            using var signal = new ManualResetEventSlim(false);
+            Exception? fatal = null;
+
+            void Worker()
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var dir = pending.Pop();
-
-                if (!isRoot)
+                try
                 {
-                    try
+                    while (true)
                     {
-                        var attr = dir.Attributes;
-                        if ((attr & (FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint)) != 0)
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (!pending.TryDequeue(out var item))
+                        {
+                            if (Volatile.Read(ref activeWorkers) == 0 && pending.IsEmpty)
+                                break;
+                            signal.Wait(10, cancellationToken);
                             continue;
+                        }
+
+                        Interlocked.Increment(ref activeWorkers);
+                        try
+                        {
+                            int added = ScanOneDirectory(item.Path, options, excluded, results, pending, cancellationToken);
+                            if (added > 0)
+                            {
+                                var total = Interlocked.Add(ref found, added);
+                                foundCount?.Report(total);
+                            }
+                            if (!pending.IsEmpty) signal.Set();
+                        }
+                        finally
+                        {
+                            if (Interlocked.Decrement(ref activeWorkers) == 0 && pending.IsEmpty)
+                                signal.Set();
+                        }
                     }
-                    catch (IOException) { continue; }
-                    catch (UnauthorizedAccessException) { continue; }
                 }
-                isRoot = false;
-
-                var dirPath = PathUtil.NormalizeDirectory(dir.FullName);
-                if (excluded.Any(e => PathUtil.PathEquals(e, dirPath))) continue;
-
-                ScanOneDirectory(dir, options, results, pending, cancellationToken);
-                foundCount?.Report(results.Count);
+                catch (Exception ex)
+                {
+                    Interlocked.CompareExchange(ref fatal, ex, null);
+                    signal.Set();
+                }
             }
 
-            results.Sort((a, b) => string.Compare(a.FullPath, b.FullPath, StringComparison.OrdinalIgnoreCase));
-            return results;
+            // まずルートを 1 回スキャンし、サブフォルダがあれば並列ワーカーを起動する
+            if (pending.TryDequeue(out var root))
+            {
+                int added = ScanOneDirectory(root.Path, options, excluded, results, pending, cancellationToken);
+                if (added > 0)
+                {
+                    found = added;
+                    foundCount?.Report(found);
+                }
+            }
+
+            if (!pending.IsEmpty)
+            {
+                int workerCount = Math.Min(maxWorkers, Math.Max(1, pending.Count));
+                if (workerCount == 1)
+                {
+                    Worker();
+                }
+                else
+                {
+                    var tasks = Enumerable.Range(0, workerCount).Select(_ => Task.Run(Worker, CancellationToken.None)).ToArray();
+                    Task.WaitAll(tasks);
+                }
+            }
+
+            if (fatal != null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(fatal);
+
+            var sorted = results.ToList();
+            sorted.Sort((a, b) => string.Compare(a.FullPath, b.FullPath, StringComparison.OrdinalIgnoreCase));
+            return sorted;
         }, cancellationToken);
     }
 
-    private static void ScanOneDirectory(
-        DirectoryInfo dir,
+    private static int ScanOneDirectory(
+        string dirPath,
         ScanOptions options,
-        List<ScannedFile> results,
-        Stack<DirectoryInfo> pending,
+        HashSet<string> excluded,
+        ConcurrentBag<ScannedFile> results,
+        ConcurrentQueue<(string Path, bool IsRoot)> pending,
         CancellationToken cancellationToken)
     {
-        FileInfo[] files;
-        try { files = dir.GetFiles(); }
-        catch (UnauthorizedAccessException) { return; }
-        catch (IOException) { return; }
-
-        var xmpByName = files
-            .Where(f => f.Extension.Equals(".xmp", StringComparison.OrdinalIgnoreCase))
-            .GroupBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First().FullName, StringComparer.OrdinalIgnoreCase);
-
-        var media = new List<FileInfo>();
-        foreach (var file in files)
+        var enumOptions = new EnumerationOptions
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
+            RecurseSubdirectories = false,
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint,
+        };
+
+        Dictionary<string, string>? xmpByName = null;
+        var media = new List<DirEntry>();
+
+        try
+        {
+            var enumerable = new FileSystemEnumerable<DirEntry>(
+                dirPath,
+                (ref FileSystemEntry entry) => new DirEntry(
+                    entry.ToFullPath(),
+                    entry.FileName.ToString(),
+                    entry.IsDirectory,
+                    entry.IsDirectory ? 0 : entry.Length,
+                    entry.CreationTimeUtc.LocalDateTime,
+                    entry.LastWriteTimeUtc.LocalDateTime),
+                enumOptions)
             {
-                if ((file.Attributes & (FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint)) != 0)
-                    continue;
+                ShouldIncludePredicate = (ref FileSystemEntry entry) =>
+                {
+                    if (entry.IsDirectory) return true;
+                    var ext = Path.GetExtension(entry.FileName);
+                    if (ext.Equals(".xmp", StringComparison.OrdinalIgnoreCase)) return true;
+                    return MediaFormats.IsSupportedExtension(ext, options.IncludeVideos);
+                },
+            };
+
+            foreach (var entry in enumerable)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (entry.IsDirectory)
+                {
+                    var norm = PathUtil.NormalizeDirectory(entry.FullPath);
+                    if (!excluded.Contains(norm))
+                        pending.Enqueue((norm, false));
+                }
+                else if (entry.Name.EndsWith(".xmp", StringComparison.OrdinalIgnoreCase))
+                {
+                    xmpByName ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    xmpByName.TryAdd(entry.Name, entry.FullPath);
+                }
+                else
+                {
+                    media.Add(entry);
+                }
             }
-            catch (IOException) { continue; }
-            if (!MediaFormats.IsSupported(file.Name, options.IncludeVideos)) continue;
-            media.Add(file);
         }
+        catch (UnauthorizedAccessException) { return 0; }
+        catch (IOException) { return 0; }
 
-        // "IMG_1.xmp" は同名の RAW（なければ他の形式）に、"IMG_1.CR3.xmp" はそのファイルに紐づける
-        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var ordered = media
-            .OrderBy(f => MediaFormats.GetKind(f.Name) == Domain.Enums.MediaKind.Raw ? 0 : 1)
-            .ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase);
+        if (media.Count == 0) return 0;
 
-        var sidecars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var f in ordered)
+        Dictionary<string, string>? sidecars = null;
+        if (xmpByName != null)
         {
-            if (xmpByName.TryGetValue(f.Name + ".xmp", out var exact) && claimed.Add(exact))
+            // "IMG_1.xmp" は同名の RAW（なければ他の形式）に、"IMG_1.CR3.xmp" はそのファイルに紐づける
+            var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var ordered = media
+                .OrderBy(f => MediaFormats.GetKind(f.Name) == MediaKind.Raw ? 0 : 1)
+                .ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase);
+
+            sidecars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var f in ordered)
             {
-                sidecars[f.FullName] = exact;
-                continue;
+                if (xmpByName.TryGetValue(f.Name + ".xmp", out var exact) && claimed.Add(exact))
+                {
+                    sidecars[f.FullPath] = exact;
+                    continue;
+                }
+                var baseXmp = Path.GetFileNameWithoutExtension(f.Name) + ".xmp";
+                if (xmpByName.TryGetValue(baseXmp, out var byBase) && claimed.Add(byBase))
+                    sidecars[f.FullPath] = byBase;
             }
-            var baseXmp = Path.GetFileNameWithoutExtension(f.Name) + ".xmp";
-            if (xmpByName.TryGetValue(baseXmp, out var byBase) && claimed.Add(byBase))
-                sidecars[f.FullName] = byBase;
         }
 
         foreach (var f in media)
         {
-            try
-            {
-                results.Add(new ScannedFile(
-                    f.FullName, f.Length, f.CreationTime, f.LastWriteTime,
-                    sidecars.GetValueOrDefault(f.FullName)));
-            }
-            catch (IOException) { }
+            results.Add(new ScannedFile(
+                f.FullPath, f.Length, f.CreatedAt, f.ModifiedAt,
+                sidecars?.GetValueOrDefault(f.FullPath)));
         }
 
-        DirectoryInfo[] subDirs;
-        try { subDirs = dir.GetDirectories(); }
-        catch (UnauthorizedAccessException) { return; }
-        catch (IOException) { return; }
-
-        foreach (var sub in subDirs.OrderByDescending(d => d.Name, StringComparer.OrdinalIgnoreCase))
-            pending.Push(sub);
+        return media.Count;
     }
 }

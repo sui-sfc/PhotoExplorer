@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows.Media;
+using System.Windows.Threading;
 using PhotoExplorer.Application;
 using PhotoExplorer.Domain;
 using PhotoExplorer.Domain.Enums;
@@ -32,12 +33,15 @@ public sealed class LibraryViewModel : ViewModelBase
     public LibraryViewModel(LibraryService service)
     {
         _service = service;
-        ReloadCommand        = new AsyncRelayCommand(ReloadAsync, () => !IsLoading);
-        ClearFiltersCommand  = new RelayCommand(ClearFilters);
-        SelectCommand        = new RelayCommand(p => Selected = p as LibraryItemViewModel);
-        OpenCommand          = new RelayCommand(p => { if ((p as LibraryItemViewModel ?? Selected) is { Exists: true } i) Shell.OpenWithDefaultApp(i.Path); });
+        ReloadCommand         = new AsyncRelayCommand(ReloadAsync, () => !IsLoading);
+        ClearFiltersCommand   = new RelayCommand(ClearFilters);
+        SelectCommand         = new RelayCommand(p => Selected = p as LibraryItemViewModel);
+        OpenCommand           = new RelayCommand(p => { if ((p as LibraryItemViewModel ?? Selected) is { Exists: true } i) Shell.OpenWithDefaultApp(i.Path); });
         ShowInExplorerCommand = new RelayCommand(p => { if ((p as LibraryItemViewModel ?? Selected) is { } i) Shell.ShowInExplorer(i.Path); });
-        ClearCacheCommand    = new RelayCommand(ClearCache);
+        OpenInMapCommand      = new RelayCommand(OpenSelectedInMap, () => HasSelectedGps);
+        CopyPathCommand       = new RelayCommand(p => CopyPath(p as LibraryItemViewModel ?? Selected));
+        ExportCsvCommand      = new RelayCommand(ExportCsv, () => _filtered.Count > 0);
+        ClearCacheCommand     = new RelayCommand(ClearCache);
     }
 
     // ===================== 読み込み =====================
@@ -114,9 +118,11 @@ public sealed class LibraryViewModel : ViewModelBase
 
     public IReadOnlyList<KeyValuePair<LibrarySort, string>> Sorts { get; } =
     [
-        new(LibrarySort.NewestFirst, "撮影日が新しい順"),
-        new(LibrarySort.OldestFirst, "撮影日が古い順"),
-        new(LibrarySort.FileName, "ファイル名順"),
+        new(LibrarySort.NewestFirst,  "撮影日が新しい順"),
+        new(LibrarySort.OldestFirst,  "撮影日が古い順"),
+        new(LibrarySort.FileName,     "ファイル名順"),
+        new(LibrarySort.RatingDesc,   "★ が高い順"),
+        new(LibrarySort.FileSizeDesc, "ファイルサイズが大きい順"),
     ];
 
     public FilterOption? Camera   { get => _camera;   set { if (SetField(ref _camera, value)) Apply(); } }
@@ -279,12 +285,34 @@ public sealed class LibraryViewModel : ViewModelBase
             if (!SetField(ref _selected, value)) return;
             if (old != null) old.IsSelected = false;
             if (value != null) value.IsSelected = true;
-            OnPropertiesChanged(nameof(HasSelection), nameof(SelectedDetails));
+            OnPropertiesChanged(nameof(HasSelection), nameof(HasSelectedGps), nameof(SelectedDetails));
             _ = LoadPreviewAsync(value);
         }
     }
 
     public bool HasSelection => _selected != null;
+    public bool HasSelectedGps => _selected?.Photo.Asset.Exif?.HasGps == true;
+
+    /// <summary>矢印キーでグリッドの選択を移動する（戻り値は選択された行オブジェクト）</summary>
+    public IReadOnlyList<LibraryItemViewModel>? MoveSelection(int delta)
+    {
+        if (_filtered.Count == 0) return null;
+        int current = _selected != null ? IndexOfSelected() : -1;
+        int next = current < 0 ? 0 : Math.Clamp(current + delta, 0, _filtered.Count - 1);
+        Selected = _filtered[next];
+        int rowIndex = next / Math.Max(1, _columns);
+        return rowIndex >= 0 && rowIndex < Rows.Count ? Rows[rowIndex] : null;
+    }
+
+    public IReadOnlyList<LibraryItemViewModel>? MoveSelectionRow(int rowDelta) =>
+        MoveSelection(rowDelta * Math.Max(1, _columns));
+
+    private int IndexOfSelected()
+    {
+        for (int i = 0; i < _filtered.Count; i++)
+            if (ReferenceEquals(_filtered[i], _selected)) return i;
+        return -1;
+    }
 
     public ImageSource? Preview { get => _preview; private set => SetField(ref _preview, value); }
 
@@ -306,7 +334,44 @@ public sealed class LibraryViewModel : ViewModelBase
     public RelayCommand SelectCommand { get; }
     public RelayCommand OpenCommand { get; }
     public RelayCommand ShowInExplorerCommand { get; }
+    public RelayCommand OpenInMapCommand { get; }
+    public RelayCommand CopyPathCommand { get; }
+    public RelayCommand ExportCsvCommand { get; }
     public RelayCommand ClearCacheCommand { get; }
+
+    private void OpenSelectedInMap()
+    {
+        var exif = _selected?.Photo.Asset.Exif;
+        if (exif is not { HasGps: true }) return;
+        var lat = exif.GPSLatitude!.Value.ToString("F6", CultureInfo.InvariantCulture);
+        var lon = exif.GPSLongitude!.Value.ToString("F6", CultureInfo.InvariantCulture);
+        Shell.OpenUrl($"https://www.google.com/maps?q={lat},{lon}");
+    }
+
+    private void CopyPath(LibraryItemViewModel? item)
+    {
+        if (item == null) return;
+        try
+        {
+            System.Windows.Clipboard.SetText(item.Path);
+            Status = $"パスをコピーしました: {item.Path}";
+        }
+        catch { }
+    }
+
+    private void ExportCsv()
+    {
+        if (_filtered.Count == 0) return;
+        var path = Dialogs.SaveFile("ライブラリの一覧を CSV で保存", "CSV ファイル (*.csv)|*.csv",
+            $"PhotoExplorer_library_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+        if (path == null) return;
+        try
+        {
+            CsvExporter.Write(path, _filtered.Select(i => i.Photo.Asset), a => ImageAssetViewModel.StatusText(a.Status));
+            Status = $"{_filtered.Count:N0} 件を CSV に保存しました: {path}";
+        }
+        catch (Exception ex) { Dialogs.Error($"保存できませんでした:\n{ex.Message}"); }
+    }
 
     private void ClearCache()
     {
@@ -378,11 +443,11 @@ public sealed class LibraryItemViewModel : ViewModelBase
     {
         var img = await ThumbnailLoader.LoadAsync(Path, width);
         if (img == null || width != _requestedWidth) return;
-        WpfApplication.Current?.Dispatcher.Invoke(() =>
+        _ = WpfApplication.Current?.Dispatcher.InvokeAsync(() =>
         {
             _thumbnail = img;
             OnPropertyChanged(nameof(Thumbnail));
-        });
+        }, DispatcherPriority.Background);
     }
 
     public IReadOnlyList<KeyValuePair<string, string>> Details

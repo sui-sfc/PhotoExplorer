@@ -97,11 +97,17 @@ public sealed partial class DuplicateDetector : IDuplicateDetector
         }
     }
 
+    // バックアップ・コピー用のフォルダらしい名前
+    [GeneratedRegex(@"(^|[\\/])(backup|バックアップ|copy|コピー|old|tmp|temp|dup|重複)([\\/]|$)", RegexOptions.IgnoreCase)]
+    private static partial Regex BackupFolderRegex();
+
     /// <summary>残すファイルの優先度（小さいほど優先）</summary>
     private static int KeepPriority(ImageAsset a)
     {
         int p = 0;
-        if (CopyLikeNameRegex().IsMatch(Path.GetFileNameWithoutExtension(a.SourcePath))) p += 2;
+        if (CopyLikeNameRegex().IsMatch(Path.GetFileNameWithoutExtension(a.SourcePath))) p += 4;
+        if (BackupFolderRegex().IsMatch(Path.GetDirectoryName(a.SourcePath) ?? "")) p += 2;
+        if (a.SidecarPath == null) p += 2; // Lightroom 等の XMP サイドカー付きを優先して残す
         if (!a.HasExifDate) p += 1;
         return p;
     }

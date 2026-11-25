@@ -22,15 +22,17 @@ public sealed class ScanStatistics
     public DateTime? EarliestShot { get; init; }
     public DateTime? LatestShot   { get; init; }
 
-    public IReadOnlyList<(string Label, int Count)> CameraBreakdown   { get; init; } = [];
-    public IReadOnlyList<(string Label, int Count)> LensBreakdown     { get; init; } = [];
-    public IReadOnlyList<(string Label, int Count)> ExtBreakdown      { get; init; } = [];
-    public IReadOnlyList<(string Label, int Count)> MonthlyBreakdown  { get; init; } = [];
-    public IReadOnlyList<(string Label, int Count)> LocationBreakdown { get; init; } = [];
+    public IReadOnlyList<(string Label, int Count)> CameraBreakdown      { get; init; } = [];
+    public IReadOnlyList<(string Label, int Count)> LensBreakdown        { get; init; } = [];
+    public IReadOnlyList<(string Label, int Count)> FocalLengthBreakdown { get; init; } = [];
+    public IReadOnlyList<(string Label, int Count)> IsoBreakdown         { get; init; } = [];
+    public IReadOnlyList<(string Label, int Count)> ExtBreakdown         { get; init; } = [];
+    public IReadOnlyList<(string Label, int Count)> MonthlyBreakdown     { get; init; } = [];
+    public IReadOnlyList<(string Label, int Count)> LocationBreakdown    { get; init; } = [];
     /// <summary>撮影時刻（0〜23時）の分布。常に24件</summary>
-    public IReadOnlyList<(string Label, int Count)> HourBreakdown     { get; init; } = [];
+    public IReadOnlyList<(string Label, int Count)> HourBreakdown        { get; init; } = [];
     /// <summary>曜日の分布（月〜日）。常に7件</summary>
-    public IReadOnlyList<(string Label, int Count)> WeekdayBreakdown  { get; init; } = [];
+    public IReadOnlyList<(string Label, int Count)> WeekdayBreakdown     { get; init; } = [];
 
     public static ScanStatistics Build(IReadOnlyCollection<ImageAsset> assets, int filteredOut, int topN = 15)
     {
@@ -74,6 +76,12 @@ public sealed class ScanStatistics
             LensBreakdown = Top(assets
                 .Where(a => !string.IsNullOrWhiteSpace(a.NormalizedLens) && a.NormalizedLens != "Unknown")
                 .Select(a => a.NormalizedLens!), topN),
+            FocalLengthBreakdown = Top(assets
+                .Select(a => Infrastructure.PathResolver.FormatFocal(a.Exif?.FocalLength))
+                .Where(v => v != "Unknown"), topN),
+            IsoBreakdown = Top(assets
+                .Select(a => Infrastructure.PathResolver.FormatIso(a.Exif?.ISO))
+                .Where(v => v != "Unknown"), topN),
             ExtBreakdown = Top(assets.Select(a => a.Extension.TrimStart('.')), topN),
             MonthlyBreakdown = dates
                 .GroupBy(d => d.ToString("yyyy/MM", CultureInfo.InvariantCulture))
