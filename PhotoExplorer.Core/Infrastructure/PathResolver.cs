@@ -54,12 +54,16 @@ public sealed partial class PathResolver : IPathResolver
             ["{mm}"]          = d.Month.ToString("D2", CultureInfo.InvariantCulture),
             ["{MMM}"]         = d.ToString("MMM", CultureInfo.InvariantCulture),
             ["{dd}"]          = d.Day.ToString("D2", CultureInfo.InvariantCulture),
+            ["{ddd}"]         = d.ToString("ddd", CultureInfo.InvariantCulture),
             ["{HH}"]          = d.Hour.ToString("D2", CultureInfo.InvariantCulture),
             ["{min}"]         = d.Minute.ToString("D2", CultureInfo.InvariantCulture),
             ["{ss}"]          = d.Second.ToString("D2", CultureInfo.InvariantCulture),
             ["{camera}"]      = S(asset.NormalizedCamera),
             ["{make}"]        = S(exif?.Brand),
             ["{lens}"]        = S(asset.NormalizedLens),
+            ["{focal}"]       = FormatFocal(exif?.FocalLength),
+            ["{iso}"]         = FormatIso(exif?.ISO),
+            ["{orientation}"] = FormatOrientation(exif?.ImageWidth, exif?.ImageHeight, exif?.Orientation),
             ["{type}"]        = MediaFormats.KindLabel(asset.Kind),
             ["{ext}"]         = asset.Extension.TrimStart('.'),
             ["{rating}"]      = Math.Clamp(exif?.Rating ?? 0, 0, 5).ToString(CultureInfo.InvariantCulture),
@@ -69,6 +73,32 @@ public sealed partial class PathResolver : IPathResolver
             ["{countrycode}"] = S(exif?.GeolocationCountryCode),
             ["{name}"]        = Path.GetFileNameWithoutExtension(asset.SourcePath),
         };
+    }
+
+    internal static string FormatFocal(string? focal)
+    {
+        if (string.IsNullOrWhiteSpace(focal)) return "Unknown";
+        if (double.TryParse(focal, NumberStyles.Float, CultureInfo.InvariantCulture, out var f) && f > 0)
+            return $"{Math.Round(f):0}mm";
+        return "Unknown";
+    }
+
+    internal static string FormatIso(string? iso)
+    {
+        if (string.IsNullOrWhiteSpace(iso)) return "Unknown";
+        if (double.TryParse(iso, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v > 0)
+            return $"ISO{Math.Round(v):0}";
+        return "Unknown";
+    }
+
+    internal static string FormatOrientation(int? w, int? h, int? orientation = null)
+    {
+        if (w is not > 0 || h is not > 0) return "Unknown";
+        // カメラの縦位置写真は横長のピクセルのまま Orientation 6 / 8 で記録される
+        if (orientation is >= 5 and <= 8) (w, h) = (h, w);
+        if (w > h) return "Landscape";
+        if (h > w) return "Portrait";
+        return "Square";
     }
 
     private static string Expand(string text, Dictionary<string, string> values) =>

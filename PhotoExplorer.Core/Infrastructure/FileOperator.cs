@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 
 namespace PhotoExplorer.Infrastructure;
@@ -30,11 +32,12 @@ public interface IFileOperator
 /// <summary>上書きしないファイル操作の実装</summary>
 public sealed class FileOperator : IFileOperator
 {
-    private const int BufferSize = 1 << 20;
+    private const int BufferSize = 1 << 20; // 1 MB
+    private readonly ConcurrentDictionary<string, byte> _createdDirs = new(PathUtil.Comparer);
 
     public Task<FileOpResult> CopyAsync(string sourcePath, string destPath, bool verify,
         string? knownSourceHash = null, CancellationToken cancellationToken = default) =>
-        CopyCoreAsync(sourcePath, destPath, verify, knownSourceHash, skipIdentical: true, cancellationToken);
+        CopyCoreAsync(sourcePath, destPath, verify, knownSourceHash, skipIdentical: true, flushToDisk: false, cancellationToken);
 
     public async Task<FileOpResult> MoveAsync(string sourcePath, string destPath, bool verify,
         string? knownSourceHash = null, CancellationToken cancellationToken = default) =>
@@ -46,16 +49,25 @@ public sealed class FileOperator : IFileOperator
         MoveCoreAsync(sourcePath, Path.Combine(trashDirectory, Path.GetFileName(sourcePath)),
             verify: true, knownSourceHash: null, skipIdentical: false, cancellationToken);
 
+    private void EnsureDirectory(string filePath)
+    {
+        var dir = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrEmpty(dir)) return;
+        if (_createdDirs.ContainsKey(dir) && Directory.Exists(dir)) return;
+        Directory.CreateDirectory(dir);
+        _createdDirs[dir] = 0;
+    }
+
     private async Task<FileOpResult> MoveCoreAsync(string src, string dest, bool verify,
         string? knownSourceHash, bool skipIdentical, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+        EnsureDirectory(dest);
 
         if (!PathUtil.SameVolume(src, dest))
         {
-            // ドライブをまたぐ移動は「コピー → 検証 → 元を削除」で行う
-            var copied = await CopyCoreAsync(src, dest, verify: true, knownSourceHash, skipIdentical, ct)
+            // ドライブをまたぐ移動は元ファイルを消すため「コピー → ディスク同期 → 検証 → 元を削除」で行う
+            var copied = await CopyCoreAsync(src, dest, verify: true, knownSourceHash, skipIdentical, flushToDisk: true, ct)
                 .ConfigureAwait(false);
             if (copied.Outcome == FileOpOutcome.Done)
                 File.Delete(src);
@@ -63,6 +75,7 @@ public sealed class FileOperator : IFileOperator
         }
 
         string? srcHash = knownSourceHash;
+        long? srcLength = null;
         for (int n = 0; ; n++)
         {
             ct.ThrowIfCancellationRequested();
@@ -74,9 +87,13 @@ public sealed class FileOperator : IFileOperator
                     return new FileOpResult(candidate, FileOpOutcome.AlreadyExists, srcHash);
                 if (skipIdentical)
                 {
-                    srcHash ??= await FileHasher.ComputeFullAsync(src, ct).ConfigureAwait(false);
-                    if (await HasContentAsync(candidate, new FileInfo(src).Length, srcHash, ct).ConfigureAwait(false))
-                        return new FileOpResult(candidate, FileOpOutcome.AlreadyExists, srcHash);
+                    srcLength ??= new FileInfo(src).Length;
+                    if (new FileInfo(candidate).Length == srcLength.Value)
+                    {
+                        srcHash ??= await FileHasher.ComputeFullAsync(src, ct).ConfigureAwait(false);
+                        if (await HasContentAsync(candidate, srcLength.Value, srcHash, ct).ConfigureAwait(false))
+                            return new FileOpResult(candidate, FileOpOutcome.AlreadyExists, srcHash);
+                    }
                 }
                 continue;
             }
@@ -94,11 +111,12 @@ public sealed class FileOperator : IFileOperator
     }
 
     private async Task<FileOpResult> CopyCoreAsync(string src, string dest, bool verify,
-        string? knownSourceHash, bool skipIdentical, CancellationToken ct)
+        string? knownSourceHash, bool skipIdentical, bool flushToDisk, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+        EnsureDirectory(dest);
         var srcInfo = new FileInfo(src);
+        long srcLength = srcInfo.Length;
         string? srcHash = knownSourceHash;
 
         for (int n = 0; ; n++)
@@ -110,9 +128,13 @@ public sealed class FileOperator : IFileOperator
             {
                 if (skipIdentical)
                 {
-                    srcHash ??= await FileHasher.ComputeFullAsync(src, ct).ConfigureAwait(false);
-                    if (await HasContentAsync(candidate, srcInfo.Length, srcHash, ct).ConfigureAwait(false))
-                        return new FileOpResult(candidate, FileOpOutcome.AlreadyExists, srcHash);
+                    // サイズが違うならハッシュ計算せずに即座に次の連番へ
+                    if (TryGetLength(candidate) == srcLength)
+                    {
+                        srcHash ??= await FileHasher.ComputeFullAsync(src, ct).ConfigureAwait(false);
+                        if (await HasContentAsync(candidate, srcLength, srcHash, ct).ConfigureAwait(false))
+                            return new FileOpResult(candidate, FileOpOutcome.AlreadyExists, srcHash);
+                    }
                 }
                 continue;
             }
@@ -120,9 +142,16 @@ public sealed class FileOperator : IFileOperator
             FileStream output;
             try
             {
-                // CreateNew: 存在確認から作成までの間に他者が作っても上書きしない
-                output = new FileStream(candidate, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                    BufferSize, FileOptions.Asynchronous);
+                // CreateNew + PreallocationSize: 上書きを防ぎつつ NTFS の断片化を抑えて高速書き込み
+                output = new FileStream(candidate, new FileStreamOptions
+                {
+                    Mode = FileMode.CreateNew,
+                    Access = FileAccess.Write,
+                    Share = FileShare.None,
+                    BufferSize = BufferSize,
+                    Options = FileOptions.Asynchronous,
+                    PreallocationSize = srcLength,
+                });
             }
             catch (IOException) when (File.Exists(candidate))
             {
@@ -136,7 +165,8 @@ public sealed class FileOperator : IFileOperator
                 {
                     copiedHash = await CopyWithHashAsync(src, output, ct).ConfigureAwait(false);
                     await output.FlushAsync(ct).ConfigureAwait(false);
-                    output.Flush(flushToDisk: true);
+                    if (flushToDisk)
+                        output.Flush(flushToDisk: true);
                 }
 
                 CopyTimestamps(srcInfo, candidate);
@@ -163,15 +193,30 @@ public sealed class FileOperator : IFileOperator
     private static async Task<string> CopyWithHashAsync(string src, Stream output, CancellationToken ct)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        await using var input = FileHasher.OpenRead(src);
-        var buffer = new byte[BufferSize];
-        int read;
-        while ((read = await input.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+        await using var input = FileHasher.OpenRead(src, BufferSize);
+        var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+        try
         {
-            hash.AppendData(buffer, 0, read);
-            await output.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+            int read;
+            while ((read = await input.ReadAsync(buffer.AsMemory(0, BufferSize), ct).ConfigureAwait(false)) > 0)
+            {
+                // 書き込み I/O と SHA-256 計算をオーバーラップさせて CPU 待ち時間を隠蔽する
+                var writeTask = output.WriteAsync(buffer.AsMemory(0, read), ct);
+                hash.AppendData(buffer, 0, read);
+                await writeTask.ConfigureAwait(false);
+            }
+            return Convert.ToHexString(hash.GetHashAndReset());
         }
-        return Convert.ToHexString(hash.GetHashAndReset());
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static long TryGetLength(string path)
+    {
+        try { return new FileInfo(path).Length; }
+        catch { return -1; }
     }
 
     private static async Task<bool> HasContentAsync(string path, long size, string hash, CancellationToken ct)

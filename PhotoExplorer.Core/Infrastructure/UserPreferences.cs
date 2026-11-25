@@ -18,16 +18,18 @@ public sealed class UserPreferences
     public int MaxParallelism      { get; set; } = Math.Clamp(Environment.ProcessorCount / 2, 2, 8);
     public DateTime? FilterStartDate { get; set; }
     public DateTime? FilterEndDate   { get; set; }
+    public int MinRating             { get; set; }
 
-    public string ExifToolPath     { get; set; } = string.Empty;
-    public bool IncludeVideos      { get; set; }
-    public bool IncludeSidecars    { get; set; } = true;
-    public bool VerifyCopies       { get; set; } = true;
-    public bool DetectDuplicates   { get; set; } = true;
-    public bool UseMetadataCache   { get; set; } = true;
-    public bool UseNoDateFolder    { get; set; }
-    public string NoDateFolderName { get; set; } = "_NoDate";
-    public bool VerboseLog         { get; set; }
+    public string ExifToolPath       { get; set; } = string.Empty;
+    public bool IncludeVideos        { get; set; }
+    public bool IncludeSidecars      { get; set; } = true;
+    public bool VerifyCopies         { get; set; } = true;
+    public bool DetectDuplicates     { get; set; } = true;
+    public bool UseMetadataCache     { get; set; } = true;
+    public bool CleanEmptySourceFolders { get; set; }
+    public bool UseNoDateFolder      { get; set; }
+    public string NoDateFolderName   { get; set; } = "_NoDate";
+    public bool VerboseLog           { get; set; }
 
     public double WindowLeft   { get; set; } = double.NaN;
     public double WindowTop    { get; set; } = double.NaN;

@@ -73,41 +73,68 @@ public sealed partial class Normalizer : INormalizer
     public Normalizer(MappingConfig? mappings = null)
         : this(MappingConfigProvider.Fixed(mappings ?? new MappingConfig())) { }
 
+    /// <summary>レンズ名の変換結果のキャッシュ。どの設定で計算したものかと一緒に入れ替える</summary>
+    private sealed record LensCache(MappingConfig Config,
+        System.Collections.Concurrent.ConcurrentDictionary<string, string> Map);
+
+    private LensCache? _lensCache;
+
     public string NormalizeCamera(params string?[] candidates)
     {
-        var names = candidates
-            .Where(c => !string.IsNullOrWhiteSpace(c))
-            .Select(c => c!.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var names = new List<string>(candidates.Length);
+        foreach (var c in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(c)) continue;
+            var trimmed = c.Trim();
+            if (!names.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+                names.Add(trimmed);
+        }
         if (names.Count == 0) return "Unknown";
 
-        var custom = _mappings.Current.Camera;
-        return Lookup(names, custom, BuiltinCameraMap, BuiltinCameraByLength) ?? SanitizeForPath(names[0]);
+        var cfg = _mappings.Current;
+        return Lookup(names, cfg.Camera, cfg.GetCameraByLength(), BuiltinCameraMap, BuiltinCameraByLength)
+               ?? SanitizeForPath(names[0]);
     }
 
     public string NormalizeLens(string? rawLens)
     {
         if (string.IsNullOrWhiteSpace(rawLens)) return "Unknown";
-        var names = new List<string> { rawLens.Trim() };
-        var custom = _mappings.Current.Lens;
-        return Lookup(names, custom, BuiltinLensMap, BuiltinLensByLength) ?? SanitizeForPath(names[0]);
+        var trimmed = rawLens.Trim();
+        var cfg = _mappings.Current;
+
+        // 設定が読み直されたら、新しい設定用のキャッシュに丸ごと入れ替える。
+        // 古い設定で計算した結果が新しい設定のキャッシュに混ざらないよう、計算に使った設定のキャッシュにだけ書く。
+        var cache = Volatile.Read(ref _lensCache);
+        if (cache == null || !ReferenceEquals(cache.Config, cfg))
+        {
+            cache = new LensCache(cfg, new(StringComparer.OrdinalIgnoreCase));
+            Volatile.Write(ref _lensCache, cache);
+        }
+        if (cache.Map.TryGetValue(trimmed, out var cached)) return cached;
+
+        var names = new List<string>(1) { trimmed };
+        var resolved = Lookup(names, cfg.Lens, cfg.GetLensByLength(), BuiltinLensMap, BuiltinLensByLength)
+                       ?? SanitizeForPath(trimmed);
+        if (cache.Map.Count < 4096) cache.Map[trimmed] = resolved;
+        return resolved;
     }
 
     private string? Lookup(
         List<string> names,
         Dictionary<string, string> custom,
+        KeyValuePair<string, string>[] customByLength,
         Dictionary<string, string> builtin,
         KeyValuePair<string, string>[] builtinByLength)
     {
-        foreach (var n in names)
-            if (custom.TryGetValue(n, out var v)) return SanitizeForPath(v);
+        if (custom.Count > 0)
+        {
+            foreach (var n in names)
+                if (custom.TryGetValue(n, out var v)) return SanitizeForPath(v);
 
-        var customByLength = custom.Where(p => !string.IsNullOrWhiteSpace(p.Key))
-                                   .OrderByDescending(p => p.Key.Length).ToArray();
-        foreach (var n in names)
-            foreach (var (key, value) in customByLength)
-                if (n.Contains(key, StringComparison.OrdinalIgnoreCase)) return SanitizeForPath(value);
+            foreach (var n in names)
+                foreach (var (key, value) in customByLength)
+                    if (n.Contains(key, StringComparison.OrdinalIgnoreCase)) return SanitizeForPath(value);
+        }
 
         foreach (var n in names)
             if (builtin.TryGetValue(n, out var v)) return v;

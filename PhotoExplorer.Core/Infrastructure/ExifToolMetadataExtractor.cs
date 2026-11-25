@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
 using PhotoExplorer.Domain.ValueObjects;
 
 namespace PhotoExplorer.Infrastructure;
@@ -31,7 +31,7 @@ public interface IMetadataExtractor
 /// </summary>
 public sealed class ExifToolMetadataExtractor : IMetadataExtractor
 {
-    private const int BatchSize = 50;
+    private const int MaxBatchSize = 80;
     private static readonly TimeSpan VersionTimeout = TimeSpan.FromSeconds(15);
 
     private static readonly string[] DateFormats =
@@ -50,7 +50,7 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         "-DateTimeOriginal", "-CreateDate", "-ModifyDate",
         "-Make", "-Model", "-LensModel", "-LensID", "-Lens",
         "-FocalLength", "-Aperture", "-ShutterSpeed", "-ISO",
-        "-ImageWidth", "-ImageHeight", "-Rating",
+        "-ImageWidth", "-ImageHeight", "-Rating", "-Orientation",
         "-GPSLatitude", "-GPSLongitude",
         "-GeolocationCity", "-GeolocationRegion",
         "-GeolocationCountry", "-GeolocationCountryCode",
@@ -89,8 +89,14 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         var results = new ConcurrentDictionary<string, MetadataResult>(PathUtil.Comparer);
         if (filePaths.Count == 0) return results;
 
-        var batches = new ConcurrentQueue<string[]>(filePaths.Chunk(BatchSize));
-        int workers = Math.Clamp(maxDegreeOfParallelism, 1, Math.Max(1, batches.Count));
+        // 少数ファイルでも複数ワーカーへ均等に配分し、大量ファイル時は大きめバッチで効率化する
+        int desiredWorkers = Math.Clamp(maxDegreeOfParallelism, 1, 16);
+        int batchSize = filePaths.Count <= desiredWorkers * 10
+            ? Math.Max(1, (filePaths.Count + desiredWorkers - 1) / desiredWorkers)
+            : Math.Clamp(filePaths.Count / (desiredWorkers * 4), 25, MaxBatchSize);
+
+        var batches = new ConcurrentQueue<string[]>(filePaths.Chunk(batchSize));
+        int workers = Math.Clamp(desiredWorkers, 1, Math.Max(1, batches.Count));
         int done = 0;
 
         // exiftool を「常駐モード」（-stay_open）で workers 個だけ起動し、バッチを順に流し込む。
@@ -277,29 +283,33 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
     internal static void ParseOutput(string stdout, Dictionary<string, MetadataResult> results)
     {
         if (string.IsNullOrWhiteSpace(stdout)) return;
-        JArray array;
-        try { array = JArray.Parse(stdout); }
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(stdout); }
         catch { return; }
 
-        foreach (var token in array)
+        using (doc)
         {
-            if (token is not JObject obj) continue;
-            var source = obj["SourceFile"]?.ToString();
-            if (string.IsNullOrEmpty(source)) continue;
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return;
+            foreach (var obj in doc.RootElement.EnumerateArray())
+            {
+                if (obj.ValueKind != JsonValueKind.Object) continue;
+                var source = Str(obj, "SourceFile");
+                if (string.IsNullOrEmpty(source)) continue;
 
-            string key;
-            try { key = Path.GetFullPath(source); }
-            catch { key = source; }
+                string key;
+                try { key = Path.GetFullPath(source); }
+                catch { key = source; }
 
-            var error = obj["Error"]?.ToString();
-            var data = ParseObject(obj);
-            results[key] = data.IsEmpty && error != null
-                ? new MetadataResult(null, error)
-                : new MetadataResult(data, null);
+                var error = Str(obj, "Error");
+                var data = ParseObject(obj);
+                results[key] = data.IsEmpty && error != null
+                    ? new MetadataResult(null, error)
+                    : new MetadataResult(data, null);
+            }
         }
     }
 
-    internal static ExifData ParseObject(JObject obj)
+    internal static ExifData ParseObject(JsonElement obj)
     {
         DateTime? dateOriginal = ParseDate(Str(obj, "DateTimeOriginal"));
         DateTime? createDate   = ParseDate(Str(obj, "CreateDate"));
@@ -322,11 +332,12 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
             Aperture               = Str(obj, "Aperture"),
             ShutterSpeed           = Str(obj, "ShutterSpeed"),
             ISO                    = Str(obj, "ISO"),
-            ImageWidth             = ParseInt(Str(obj, "ImageWidth")),
-            ImageHeight            = ParseInt(Str(obj, "ImageHeight")),
-            Rating                 = ParseInt(Str(obj, "Rating")),
-            GPSLatitude            = ParseDouble(Str(obj, "GPSLatitude")),
-            GPSLongitude           = ParseDouble(Str(obj, "GPSLongitude")),
+            ImageWidth             = ParseInt(obj, "ImageWidth"),
+            ImageHeight            = ParseInt(obj, "ImageHeight"),
+            Rating                 = ParseInt(obj, "Rating"),
+            Orientation            = ParseInt(obj, "Orientation"),
+            GPSLatitude            = ParseDouble(obj, "GPSLatitude"),
+            GPSLongitude           = ParseDouble(obj, "GPSLongitude"),
             GeolocationCity        = Str(obj, "GeolocationCity"),
             GeolocationRegion      = Str(obj, "GeolocationRegion"),
             GeolocationCountry     = Str(obj, "GeolocationCountry"),
@@ -335,9 +346,18 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         };
     }
 
-    private static string? Str(JObject obj, string name)
+    private static string? Str(JsonElement obj, string name)
     {
-        var v = obj[name]?.ToString();
+        if (!obj.TryGetProperty(name, out var prop)) return null;
+        string? v = prop.ValueKind switch
+        {
+            JsonValueKind.String => prop.GetString(),
+            JsonValueKind.Number => prop.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
+            _ => prop.ToString(),
+        };
         return string.IsNullOrWhiteSpace(v) ? null : v.Trim();
     }
 
@@ -356,11 +376,29 @@ public sealed class ExifToolMetadataExtractor : IMetadataExtractor
         return null;
     }
 
-    private static double? ParseDouble(string? value) =>
-        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
+    private static double? ParseDouble(JsonElement obj, string name)
+    {
+        if (!obj.TryGetProperty(name, out var prop)) return null;
+        if (prop.ValueKind == JsonValueKind.Number && prop.TryGetDouble(out var d)) return d;
+        if (prop.ValueKind == JsonValueKind.String
+            && double.TryParse(prop.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var s))
+            return s;
+        return null;
+    }
 
-    private static int? ParseInt(string? value) =>
-        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? (int)Math.Round(d) : null;
+    private static int? ParseInt(JsonElement obj, string name)
+    {
+        if (!obj.TryGetProperty(name, out var prop)) return null;
+        if (prop.ValueKind == JsonValueKind.Number)
+        {
+            if (prop.TryGetInt32(out var i)) return i;
+            if (prop.TryGetDouble(out var d)) return (int)Math.Round(d);
+        }
+        if (prop.ValueKind == JsonValueKind.String
+            && double.TryParse(prop.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var s))
+            return (int)Math.Round(s);
+        return null;
+    }
 }
 
 /// <summary>exiftool の実行ファイルを探す</summary>

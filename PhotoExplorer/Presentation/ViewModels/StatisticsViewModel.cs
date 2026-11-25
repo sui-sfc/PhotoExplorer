@@ -22,17 +22,21 @@ public sealed class StatisticsViewModel : ViewModelBase
         _ => "—",
     };
 
-    public IReadOnlyList<BarItem> CameraChart   { get; private set; } = [];
-    public IReadOnlyList<BarItem> LensChart     { get; private set; } = [];
-    public IReadOnlyList<BarItem> ExtChart      { get; private set; } = [];
-    public IReadOnlyList<BarItem> MonthlyChart  { get; private set; } = [];
-    public IReadOnlyList<BarItem> LocationChart { get; private set; } = [];
-    public IReadOnlyList<BarItem> HourChart     { get; private set; } = [];
-    public IReadOnlyList<BarItem> WeekdayChart  { get; private set; } = [];
+    public IReadOnlyList<BarItem> CameraChart      { get; private set; } = [];
+    public IReadOnlyList<BarItem> LensChart        { get; private set; } = [];
+    public IReadOnlyList<BarItem> FocalLengthChart { get; private set; } = [];
+    public IReadOnlyList<BarItem> IsoChart         { get; private set; } = [];
+    public IReadOnlyList<BarItem> ExtChart         { get; private set; } = [];
+    public IReadOnlyList<BarItem> MonthlyChart     { get; private set; } = [];
+    public IReadOnlyList<BarItem> LocationChart    { get; private set; } = [];
+    public IReadOnlyList<BarItem> HourChart        { get; private set; } = [];
+    public IReadOnlyList<BarItem> WeekdayChart     { get; private set; } = [];
     public IReadOnlyList<BarItem> CameraTotalsChart { get; private set; } = [];
 
-    public bool HasData => _stats.TotalFiles > 0;
-    public bool HasLocations => LocationChart.Count > 0;
+    public bool HasData         => _stats.TotalFiles > 0;
+    public bool HasLocations    => LocationChart.Count > 0;
+    public bool HasFocalLengths => FocalLengthChart.Count > 0;
+    public bool HasIsos         => IsoChart.Count > 0;
     public bool HasCameraTotals => CameraTotalsChart.Count > 0;
 
     public ObservableCollection<RunHistoryViewModel> History { get; } = new();
@@ -40,18 +44,21 @@ public sealed class StatisticsViewModel : ViewModelBase
     public void Update(ScanStatistics stats)
     {
         _stats = stats;
-        CameraChart   = BarItem.Build(stats.CameraBreakdown,   "#2563EB");
-        LensChart     = BarItem.Build(stats.LensBreakdown,     "#0891B2");
-        ExtChart      = BarItem.Build(stats.ExtBreakdown,      "#16A34A");
-        MonthlyChart  = BarItem.Build(stats.MonthlyBreakdown,  "#7C3AED");
-        LocationChart = BarItem.Build(stats.LocationBreakdown, "#DB2777");
-        HourChart     = BarItem.Build(stats.HourBreakdown,     "#EA580C");
-        WeekdayChart  = BarItem.Build(stats.WeekdayBreakdown,  "#CA8A04");
+        CameraChart      = BarItem.Build(stats.CameraBreakdown,      "#2563EB");
+        LensChart        = BarItem.Build(stats.LensBreakdown,        "#0891B2");
+        FocalLengthChart = BarItem.Build(stats.FocalLengthBreakdown, "#0D9488");
+        IsoChart         = BarItem.Build(stats.IsoBreakdown,         "#6366F1");
+        ExtChart         = BarItem.Build(stats.ExtBreakdown,         "#16A34A");
+        MonthlyChart     = BarItem.Build(stats.MonthlyBreakdown,     "#7C3AED");
+        LocationChart    = BarItem.Build(stats.LocationBreakdown,    "#DB2777");
+        HourChart        = BarItem.Build(stats.HourBreakdown,        "#EA580C");
+        WeekdayChart     = BarItem.Build(stats.WeekdayBreakdown,     "#CA8A04");
 
         OnPropertiesChanged(nameof(TotalFiles), nameof(TotalSize), nameof(JpegCount), nameof(RawCount),
             nameof(HeifVideoCount), nameof(WithGps), nameof(DateRange), nameof(CameraChart), nameof(LensChart),
-            nameof(ExtChart), nameof(MonthlyChart), nameof(LocationChart), nameof(HourChart), nameof(WeekdayChart),
-            nameof(HasData), nameof(HasLocations));
+            nameof(FocalLengthChart), nameof(IsoChart), nameof(ExtChart), nameof(MonthlyChart),
+            nameof(LocationChart), nameof(HourChart), nameof(WeekdayChart),
+            nameof(HasData), nameof(HasLocations), nameof(HasFocalLengths), nameof(HasIsos));
     }
 
     public void LoadHistory(StatsHistoryRepository repo)

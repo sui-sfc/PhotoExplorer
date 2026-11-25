@@ -13,6 +13,17 @@ public sealed class MappingConfig
     /// <summary>レンズ名マッピング: 元の名前 → 表示名</summary>
     public Dictionary<string, string> Lens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 部分一致用にキー長降順で並べた一覧。
+    /// 置き換え設定は数十件程度なので毎回並べ直す（件数が同じまま中身が変わっても古い結果を使わないため）。
+    /// </summary>
+    internal KeyValuePair<string, string>[] GetCameraByLength() => SortByKeyLength(Camera);
+
+    internal KeyValuePair<string, string>[] GetLensByLength() => SortByKeyLength(Lens);
+
+    private static KeyValuePair<string, string>[] SortByKeyLength(Dictionary<string, string> map) =>
+        map.Where(p => !string.IsNullOrWhiteSpace(p.Key)).OrderByDescending(p => p.Key.Length).ToArray();
+
     /// <summary>JSON を読み込む。構文エラーなどは例外になる。</summary>
     public static MappingConfig Load(string path)
     {
