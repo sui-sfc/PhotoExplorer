@@ -87,13 +87,13 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
                 Add(LogEntry.Info($"…以降のファイルごとのログは省略します（全件は「ファイル一覧」タブと CSV 出力で確認できます）"));
         }
 
-        public void Report(RunPhase phase, int total, int done, string file, string message, bool force = false)
+        public void Report(RunPhase phase, int total, int done, string file, string message, bool force = false, long processedBytes = 0)
         {
             if (Progress == null) return;
             var now = Environment.TickCount64;
             if (!force && done != total && now - Interlocked.Read(ref _lastReport) < 60) return;
             Interlocked.Exchange(ref _lastReport, now);
-            Progress.Report(new OrganizeProgress(phase, total, done, file, message));
+            Progress.Report(new OrganizeProgress(phase, total, done, file, message, processedBytes));
         }
     }
 
@@ -125,7 +125,7 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
             _metadataExtractor.ToolPath = ExifToolLocator.Resolve(s.ExifToolPath);
             exifVersion = _metadataExtractor.GetVersion();
             if (exifVersion == null)
-                ctx.Add(LogEntry.Warn($"exiftool が見つかりません（{_metadataExtractor.ToolPath}）。撮影日の代わりにファイルの日時を使い、カメラ・レンズは Unknown になります。"));
+                ctx.Add(LogEntry.Warn($"exiftool が見つかりません（{_metadataExtractor.ToolPath}）。JPEG / 標準 RAW は内蔵リーダーで読み取りますが、HEIC・CR3・動画・地名変換には exiftool が必要です。"));
             else
                 ctx.Add(LogEntry.Info($"exiftool {exifVersion} を使用します（{_metadataExtractor.ToolPath}）"));
 
@@ -163,7 +163,7 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
             else
             {
                 await ReadMetadataAsync(ctx, exifVersion != null, ct).ConfigureAwait(false);
-                filteredOut = ApplyDateFilter(ctx);
+                filteredOut = ApplyFilters(ctx);
                 var active = assets.Where(a => a.Status != AssetStatus.Filtered).ToList();
 
                 // ----- 名前の正規化・出力先の決定 -----
@@ -299,28 +299,93 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
         }
 
         var needs = assets.Where(a => !a.MetadataExtracted).ToList();
-        if (cacheHits > 0)
-            ctx.Add(LogEntry.Info($"メタデータ: 前回の結果を再利用 {cacheHits:N0} 件 / 新たに読み取り {needs.Count:N0} 件"));
 
-        if (exifToolAvailable && needs.Count > 0)
+        // 高速内蔵 EXIF リーダーで並列読み取りし、GPS 地名解決・未対応形式・MakerNote レンズ解析が必要なものだけを exiftool に回す
+        var exifToolNeeds = new List<ImageAsset>();
+        var fastFallbacks = new Dictionary<string, Domain.ValueObjects.ExifData>(PathUtil.Comparer);
+        int fastHits = 0;
+
+        if (needs.Count > 0)
         {
-            ctx.Report(RunPhase.ReadingMetadata, needs.Count, 0, "", "メタデータを読み取っています...", force: true);
+            ctx.Report(RunPhase.ReadingMetadata, needs.Count, 0, "", "メタデータを高速読み取りしています...", force: true);
+            int fastDone = 0;
+            var fastResults = new FastExifResult?[needs.Count];
+
+            Parallel.For(0, needs.Count,
+                new ParallelOptions { MaxDegreeOfParallelism = Math.Clamp(s.MaxDegreeOfParallelism * 2, 2, 16), CancellationToken = ct },
+                i =>
+                {
+                    fastResults[i] = FastExifReader.TryRead(needs[i].SourcePath);
+                    int n = Interlocked.Increment(ref fastDone);
+                    ctx.Report(RunPhase.ReadingMetadata, needs.Count, n, needs[i].FileName,
+                        $"メタデータを読み取っています... {n:N0}/{needs.Count:N0}");
+                });
+
+            for (int i = 0; i < needs.Count; i++)
+            {
+                var a = needs[i];
+                var fast = fastResults[i];
+                if (fast != null)
+                {
+                    // 撮影日が取れなかったもの（XMP にだけ日付がある等）も exiftool に読ませる
+                    bool wantsExifTool = fast.NeedsExifTool || fast.Data.EffectiveDate == null;
+                    if (!exifToolAvailable || !wantsExifTool)
+                    {
+                        a.Exif = fast.Data.IsEmpty ? null : fast.Data;
+                        // exiftool が無いために読めなかった情報（地名など）があるものは、完全な結果として記録しない。
+                        // 後で exiftool を入れたときに読み直せるようにする。
+                        a.MetadataExtracted = !wantsExifTool;
+                        fastHits++;
+                    }
+                    else
+                    {
+                        fastFallbacks[a.SourcePath] = fast.Data;
+                        exifToolNeeds.Add(a);
+                    }
+                }
+                else if (exifToolAvailable)
+                {
+                    exifToolNeeds.Add(a);
+                }
+            }
+        }
+
+        if (cacheHits > 0 || fastHits > 0 || exifToolNeeds.Count > 0)
+        {
+            var parts = new List<string>();
+            if (cacheHits > 0) parts.Add($"前回の結果を再利用 {cacheHits:N0} 件");
+            if (fastHits > 0) parts.Add($"内蔵リーダー高速読み取り {fastHits:N0} 件");
+            if (exifToolNeeds.Count > 0) parts.Add($"exiftool {exifToolNeeds.Count:N0} 件");
+            ctx.Add(LogEntry.Info("メタデータ取得: " + string.Join(" / ", parts)));
+        }
+
+        if (exifToolAvailable && exifToolNeeds.Count > 0)
+        {
+            ctx.Report(RunPhase.ReadingMetadata, exifToolNeeds.Count, 0, "", "exiftool で詳細メタデータを読み取っています...", force: true);
             var readProgress = new Progress<int>(n =>
-                ctx.Report(RunPhase.ReadingMetadata, needs.Count, n, "", $"メタデータを読み取っています... {n:N0}/{needs.Count:N0}"));
+                ctx.Report(RunPhase.ReadingMetadata, exifToolNeeds.Count, n, "",
+                    $"exiftool で詳細メタデータを読み取っています... {n:N0}/{exifToolNeeds.Count:N0}"));
 
             var results = await _metadataExtractor.ExtractAsync(
-                needs.Select(a => a.SourcePath).ToList(), s.MaxDegreeOfParallelism, readProgress, ct).ConfigureAwait(false);
+                exifToolNeeds.Select(a => a.SourcePath).ToList(), s.MaxDegreeOfParallelism, readProgress, ct).ConfigureAwait(false);
 
             int failures = 0;
-            foreach (var a in needs)
+            foreach (var a in exifToolNeeds)
             {
-                if (!results.TryGetValue(a.SourcePath, out var r)) continue;
-                if (r.Data != null)
+                results.TryGetValue(a.SourcePath, out var r);
+                if (r?.Data != null)
                 {
                     a.Exif = r.Data;
                     a.MetadataExtracted = true;
                 }
-                else if (r.Error != null)
+                else if (fastFallbacks.TryGetValue(a.SourcePath, out var fallback))
+                {
+                    // exiftool で読めなかった（結果なし・失敗）ときは内蔵リーダーの結果を使う。
+                    // 完全な結果ではないので記録はせず、次回もう一度 exiftool に読ませる。
+                    a.Exif = fallback.IsEmpty ? null : fallback;
+                    a.MetadataExtracted = false;
+                }
+                else if (r?.Error != null)
                 {
                     failures++;
                     a.ErrorMessage = $"メタデータ読み取り失敗: {r.Error}";
@@ -360,26 +425,34 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
         }
     }
 
-    private static int ApplyDateFilter(RunContext ctx)
+    private static int ApplyFilters(RunContext ctx)
     {
         var s = ctx.Settings;
-        if (!s.FilterStartDate.HasValue && !s.FilterEndDate.HasValue) return 0;
+        bool hasDate = s.FilterStartDate.HasValue || s.FilterEndDate.HasValue;
+        bool hasRating = s.MinRating > 0;
+        if (!hasDate && !hasRating) return 0;
 
         var start = s.FilterStartDate?.Date ?? DateTime.MinValue;
         var end = s.FilterEndDate.HasValue ? s.FilterEndDate.Value.Date.AddDays(1).AddTicks(-1) : DateTime.MaxValue;
         int filtered = 0;
         foreach (var a in ctx.Assets)
         {
-            var d = a.BestDate;
-            if (d < start || d > end)
+            bool dateOut = hasDate && (a.BestDate < start || a.BestDate > end);
+            bool ratingOut = hasRating && Math.Clamp(a.Exif?.Rating ?? 0, 0, 5) < s.MinRating;
+            if (dateOut || ratingOut)
             {
                 a.Status = AssetStatus.Filtered;
                 a.ErrorMessage = null;
                 filtered++;
             }
         }
-        var range = $"{(s.FilterStartDate.HasValue ? start.ToString("yyyy/MM/dd") : "")}〜{(s.FilterEndDate.HasValue ? end.ToString("yyyy/MM/dd") : "")}";
-        ctx.Add(LogEntry.Info($"日付フィルタ {range}: 対象 {ctx.Assets.Count - filtered:N0} 件 / 対象外 {filtered:N0} 件"));
+        if (hasDate)
+        {
+            var range = $"{(s.FilterStartDate.HasValue ? start.ToString("yyyy/MM/dd") : "")}〜{(s.FilterEndDate.HasValue ? end.ToString("yyyy/MM/dd") : "")}";
+            ctx.Add(LogEntry.Info($"日付フィルタ {range}: 対象 {ctx.Assets.Count - filtered:N0} 件 / 対象外 {filtered:N0} 件"));
+        }
+        if (hasRating)
+            ctx.Add(LogEntry.Info($"レーティングフィルタ ★{s.MinRating} 以上: 対象 {ctx.Assets.Count - filtered:N0} 件 / 対象外 {filtered:N0} 件"));
         return filtered;
     }
 
@@ -422,6 +495,7 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
         var kind = move ? OperationKind.Move : OperationKind.Copy;
         var targets = active.Where(a => a.Status != AssetStatus.Error).ToList();
         int done = 0, trashed = 0;
+        long processedBytes = 0;
         int workers = Math.Clamp(s.MaxDegreeOfParallelism, 1, 8);
 
         ctx.Add(LogEntry.Info($"{ModeLabel(s.Mode)} を開始します（{targets.Count:N0} 件、同時 {workers} 件、コピー検証: {(s.VerifyCopies ? "あり" : "なし")}）"));
@@ -435,6 +509,10 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
             .Select(g => g.OrderBy(x => x.index).Select(x => x.a).ToList())
             .ToList();
 
+        var movedSourceDirs = move && s.CleanEmptySourceFolders
+            ? new System.Collections.Concurrent.ConcurrentDictionary<string, byte>(PathUtil.Comparer)
+            : null;
+
         await Parallel.ForEachAsync(groups,
             new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = ct },
             async (group, token) =>
@@ -443,19 +521,33 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
                 {
                     token.ThrowIfCancellationRequested();
                     ctx.Report(RunPhase.Transferring, targets.Count, Volatile.Read(ref done), a.FileName,
-                        $"{ModeLabel(s.Mode)}中... {Volatile.Read(ref done):N0}/{targets.Count:N0}");
-                    if (await TransferOneAsync(ctx, a, move, kind, token).ConfigureAwait(false))
-                        Interlocked.Increment(ref trashed);
+                        $"{ModeLabel(s.Mode)}中... {Volatile.Read(ref done):N0}/{targets.Count:N0}",
+                        processedBytes: Volatile.Read(ref processedBytes));
+                    var (wasTrashed, transferredBytes) = await TransferOneAsync(ctx, a, move, kind, token).ConfigureAwait(false);
+                    if (wasTrashed) Interlocked.Increment(ref trashed);
+                    if (transferredBytes > 0) Interlocked.Add(ref processedBytes, transferredBytes);
+                    if (movedSourceDirs != null && (a.Status == AssetStatus.Processed || wasTrashed))
+                    {
+                        var dir = Path.GetDirectoryName(a.SourcePath);
+                        if (!string.IsNullOrEmpty(dir)) movedSourceDirs[dir] = 0;
+                    }
                     Interlocked.Increment(ref done);
                 }
             }).ConfigureAwait(false);
 
-        ctx.Report(RunPhase.Transferring, targets.Count, done, "", $"{ModeLabel(s.Mode)} 完了", force: true);
+        if (movedSourceDirs != null && movedSourceDirs.Count > 0)
+        {
+            foreach (var dir in movedSourceDirs.Keys.OrderByDescending(d => d.Length))
+                PathUtil.DeleteEmptyParents(dir, s.InputDirectory);
+            ctx.Add(LogEntry.Info("移動後に空になった入力側のサブフォルダを片付けました。"));
+        }
+
+        ctx.Report(RunPhase.Transferring, targets.Count, done, "", $"{ModeLabel(s.Mode)} 完了", force: true, processedBytes: processedBytes);
         return trashed;
     }
 
-    /// <summary>1 ファイルをコピー・移動（重複なら退避）する。退避した場合は true</summary>
-    private async Task<bool> TransferOneAsync(RunContext ctx, ImageAsset a, bool move, OperationKind kind, CancellationToken ct)
+    /// <summary>1 ファイルをコピー・移動（重複なら退避）する</summary>
+    private async Task<(bool Trashed, long TransferredBytes)> TransferOneAsync(RunContext ctx, ImageAsset a, bool move, OperationKind kind, CancellationToken ct)
     {
         var s = ctx.Settings;
         try
@@ -466,14 +558,14 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
                 {
                     a.OutputPath = null;
                     ctx.PerFile(LogEntry.Info($"重複のため残しました: {a.SourcePath}"));
-                    return false;
+                    return (false, 0);
                 }
                 var t = await _fileOperator.MoveToTrashAsync(a.SourcePath, s.TrashDirectory, ct).ConfigureAwait(false);
                 _journal.Record(ctx.RunId, OperationKind.Trash, a.SourcePath, t.Path, t.Hash, a.FileSize);
                 await MoveSidecarToTrashAsync(ctx, a, ct).ConfigureAwait(false);
                 a.OutputPath = t.Path;
                 ctx.PerFile(LogEntry.Info($"重複を退避: {a.SourcePath} → {t.Path}"));
-                return true;
+                return (true, a.FileSize);
             }
 
             var r = move
@@ -486,6 +578,7 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
                 a.Status = AssetStatus.Skipped;
                 a.OutputPath = r.Path;
                 ctx.PerFile(LogEntry.Info($"スキップ（出力先に同じファイルがあります）: {a.SourcePath}"));
+                return (false, 0);
             }
             else
             {
@@ -495,6 +588,7 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
                 a.ProcessedAt = DateTime.Now;
                 await TransferSidecarAsync(ctx, a, r.Path, move, kind, ct).ConfigureAwait(false);
                 ctx.PerFile(LogEntry.Ok($"{a.SourcePath} → {r.Path}"));
+                return (false, a.FileSize);
             }
         }
         catch (OperationCanceledException) { throw; }
@@ -504,7 +598,7 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
             a.ErrorMessage = ex.Message;
             ctx.Add(LogEntry.Error($"{ModeLabel(s.Mode)}できませんでした: {a.SourcePath} - {ex.Message}"));
         }
-        return false;
+        return (false, 0);
     }
 
     /// <summary>同じ名前で出力されうるもの同士をまとめるためのキー</summary>

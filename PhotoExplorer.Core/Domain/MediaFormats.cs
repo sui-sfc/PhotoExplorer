@@ -35,6 +35,28 @@ public static class MediaFormats
         return Map.TryGetValue(ext, out var kind) ? kind : null;
     }
 
+    /// <summary>文字列を割り当てずに拡張子の対応有無を判定する（高速スキャン用）</summary>
+    public static bool IsSupportedExtension(ReadOnlySpan<char> ext, bool includeVideos)
+    {
+        if (ext.Length < 4 || ext.Length > 5 || ext[0] != '.') return false;
+        // 頻出拡張子を最速パスで判定
+        if (ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".cr3", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".cr2", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".arw", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".nef", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".raf", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".dng", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".heic", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".orf", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".rw2", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var kind = GetKind(ext.ToString());
+        return kind != null && (includeVideos || kind != MediaKind.Video);
+    }
+
     public static bool IsSupported(string path, bool includeVideos)
     {
         var kind = GetKind(path);

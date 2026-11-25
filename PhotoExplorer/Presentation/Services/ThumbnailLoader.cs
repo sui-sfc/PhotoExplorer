@@ -96,7 +96,7 @@ public static class ThumbnailLoader
                 if (fromCache != null) return fromCache;
             }
 
-            var image = Decode(path, decodeWidth, applyOrientation: true);
+            var image = DecodeFile(path, decodeWidth);
             if (image != null) TrySave(image, cacheFile);
             return image;
         }
@@ -106,14 +106,62 @@ public static class ThumbnailLoader
         }
     }
 
+    private static BitmapSource? DecodeFile(string path, int decodeWidth)
+    {
+        // RAW ファイルは内蔵プレビュー抽出を先に試す（Windows の Raw 画像拡張機能なしでも表示でき、10倍以上速い）
+        if (MediaFormats.GetKind(path) == MediaKind.Raw)
+        {
+            var embedded = EmbeddedPreviewExtractor.TryExtract(path);
+            if (embedded != null)
+            {
+                using var ms = new MemoryStream(embedded.JpegBytes, writable: false);
+                int rawOrientation = embedded.Orientation;
+                if (rawOrientation == 1)
+                {
+                    // CR3 などは内蔵リーダーで向きを読めないので、元ファイルの WIC メタデータで確認する
+                    try
+                    {
+                        using var original = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                        rawOrientation = ReadWicOrientation(original);
+                    }
+                    catch { rawOrientation = 1; }
+                }
+                var fromRaw = DecodeStream(ms, decodeWidth, rawOrientation);
+                if (fromRaw != null) return fromRaw;
+            }
+        }
+        return Decode(path, decodeWidth, applyOrientation: true);
+    }
+
     private static BitmapSource? Decode(string path, int decodeWidth, bool applyOrientation)
     {
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            int orientation = applyOrientation ? ReadOrientation(stream) : 1;
+            int orientation = applyOrientation ? FastExifReader.ReadOrientation(stream) : 1;
+            if (applyOrientation && orientation == 1)
+            {
+                // JPEG 以外（HEIC・CR3 など内蔵リーダーで向きを読めない形式）は WIC メタデータで確認する
+                var kind = MediaFormats.GetKind(path);
+                if (kind != MediaKind.Jpeg)
+                {
+                    stream.Position = 0;
+                    orientation = ReadWicOrientation(stream);
+                }
+            }
             stream.Position = 0;
+            return DecodeStream(stream, decodeWidth, orientation);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
+    private static BitmapSource? DecodeStream(Stream stream, int decodeWidth, int orientation)
+    {
+        try
+        {
             var bmp = new BitmapImage();
             bmp.BeginInit();
             bmp.CacheOption = BitmapCacheOption.OnLoad;
@@ -144,8 +192,8 @@ public static class ThumbnailLoader
         }
     }
 
-    /// <summary>EXIF Orientation（1〜8）。読めなければ 1</summary>
-    private static int ReadOrientation(Stream stream)
+    /// <summary>EXIF Orientation（1〜8）。WIC 経由のフォールバック。読めなければ 1</summary>
+    private static int ReadWicOrientation(Stream stream)
     {
         try
         {

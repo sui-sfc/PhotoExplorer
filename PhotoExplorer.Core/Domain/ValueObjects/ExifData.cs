@@ -23,6 +23,8 @@ public sealed record ExifData
     public int? ImageHeight { get; init; }
     /// <summary>XMP/EXIF のレーティング（0〜5）</summary>
     public int? Rating { get; init; }
+    /// <summary>EXIF Orientation（1〜8）。5〜8 は 90° 回転して表示する（縦位置）</summary>
+    public int? Orientation { get; init; }
 
     /// <summary>GPS緯度（10進度）</summary>
     public double? GPSLatitude { get; init; }

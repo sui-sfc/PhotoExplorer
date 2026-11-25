@@ -35,6 +35,7 @@ public sealed class MainViewModel : ViewModelBase
     private RunPhase _phase;
     private DateTime _phaseStartedAt;
     private int _phaseStartDone;
+    private long _phaseProcessedBytes;
     private OrganizeResult? _lastResult;
 
     public MainViewModel(
@@ -73,13 +74,14 @@ public sealed class MainViewModel : ViewModelBase
         ExportCsvCommand       = new RelayCommand(ExportCsv, () => _lastResult?.Assets.Count > 0);
         OpenMappingsCommand    = new RelayCommand(OpenMappings);
         OpenDataFolderCommand  = new RelayCommand(() => Shell.OpenFolder(AppPaths.DataDirectory));
-        ClearFilterCommand     = new RelayCommand(() => { FilterStartDate = null; FilterEndDate = null; });
+        ClearFilterCommand     = new RelayCommand(() => { FilterStartDate = null; FilterEndDate = null; MinRating = 0; });
         UndoRunCommand         = new AsyncRelayCommand(p => UndoAsync(p as RunHistoryViewModel), p => !IsRunning && p is RunHistoryViewModel { CanUndo: true });
         UndoLastRunCommand     = new AsyncRelayCommand(() => UndoAsync(LastUndoableRun), () => !IsRunning && LastUndoableRun != null);
         ClearHistoryCommand    = new RelayCommand(ClearHistory, () => !IsRunning && Statistics.History.Count > 0);
         ShowInExplorerCommand  = new RelayCommand(p => { if (PathOf(p) is { } path) Shell.ShowInExplorer(path); });
         OpenFileCommand        = new RelayCommand(p => { if (PathOf(p) is { } path) Shell.OpenWithDefaultApp(path); });
         ShowOutputInExplorerCommand = new RelayCommand(p => { if (p is ImageAssetViewModel { OutputPath: { } o }) Shell.ShowInExplorer(o); });
+        KeepDuplicateCommand        = new RelayCommand(p => { if (p is DuplicateFileViewModel f) { f.Group.SetKept(f); OnPropertyChanged(nameof(DuplicateSummary)); } }, p => !IsRunning && p is DuplicateFileViewModel { CanSetKept: true });
         RecycleDuplicateCommand     = new RelayCommand(p => RecycleDuplicates(p is DuplicateFileViewModel f ? [f] : []), p => !IsRunning && p is DuplicateFileViewModel { CanRecycle: true });
         RecycleAllDuplicatesCommand = new RelayCommand(() => RecycleDuplicates(DuplicateGroups.SelectMany(g => g.Files).Where(f => f.CanRecycle).ToList()),
                                                        () => !IsRunning && DuplicateGroups.Any(g => g.Files.Any(f => f.CanRecycle)));
@@ -168,7 +170,23 @@ public sealed class MainViewModel : ViewModelBase
         set { if (_prefs.FilterEndDate != value) { _prefs.FilterEndDate = value; Saved(); OnPropertyChanged(nameof(HasDateFilter)); } }
     }
 
-    public bool HasDateFilter => FilterStartDate.HasValue || FilterEndDate.HasValue;
+    public bool HasDateFilter => FilterStartDate.HasValue || FilterEndDate.HasValue || MinRating > 0;
+
+    public IReadOnlyList<KeyValuePair<int, string>> MinRatingOptions { get; } =
+    [
+        new(0, "★ 指定なし"),
+        new(1, "★1 以上"),
+        new(2, "★2 以上"),
+        new(3, "★3 以上"),
+        new(4, "★4 以上"),
+        new(5, "★5 のみ"),
+    ];
+
+    public int MinRating
+    {
+        get => _prefs.MinRating;
+        set { var v = Math.Clamp(value, 0, 5); if (_prefs.MinRating != v) { _prefs.MinRating = v; Saved(); OnPropertyChanged(nameof(HasDateFilter)); } }
+    }
 
     public string ExifToolPath
     {
@@ -176,12 +194,13 @@ public sealed class MainViewModel : ViewModelBase
         set { if (_prefs.ExifToolPath != value) { _prefs.ExifToolPath = value.Trim(); Saved(); _ = CheckExifToolAsync(); } }
     }
 
-    public bool IncludeVideos    { get => _prefs.IncludeVideos;    set { if (_prefs.IncludeVideos != value)    { _prefs.IncludeVideos = value;    Saved(); } } }
-    public bool IncludeSidecars  { get => _prefs.IncludeSidecars;  set { if (_prefs.IncludeSidecars != value)  { _prefs.IncludeSidecars = value;  Saved(); } } }
-    public bool VerifyCopies     { get => _prefs.VerifyCopies;     set { if (_prefs.VerifyCopies != value)     { _prefs.VerifyCopies = value;     Saved(); } } }
-    public bool DetectDuplicates { get => _prefs.DetectDuplicates; set { if (_prefs.DetectDuplicates != value) { _prefs.DetectDuplicates = value; Saved(); } } }
-    public bool UseMetadataCache { get => _prefs.UseMetadataCache; set { if (_prefs.UseMetadataCache != value) { _prefs.UseMetadataCache = value; Saved(); } } }
-    public bool VerboseLog       { get => _prefs.VerboseLog;       set { if (_prefs.VerboseLog != value)       { _prefs.VerboseLog = value;       Saved(); } } }
+    public bool IncludeVideos           { get => _prefs.IncludeVideos;           set { if (_prefs.IncludeVideos != value)           { _prefs.IncludeVideos = value;           Saved(); } } }
+    public bool IncludeSidecars         { get => _prefs.IncludeSidecars;         set { if (_prefs.IncludeSidecars != value)         { _prefs.IncludeSidecars = value;         Saved(); } } }
+    public bool VerifyCopies            { get => _prefs.VerifyCopies;            set { if (_prefs.VerifyCopies != value)            { _prefs.VerifyCopies = value;            Saved(); } } }
+    public bool DetectDuplicates        { get => _prefs.DetectDuplicates;        set { if (_prefs.DetectDuplicates != value)        { _prefs.DetectDuplicates = value;        Saved(); } } }
+    public bool UseMetadataCache        { get => _prefs.UseMetadataCache;        set { if (_prefs.UseMetadataCache != value)        { _prefs.UseMetadataCache = value;        Saved(); } } }
+    public bool CleanEmptySourceFolders { get => _prefs.CleanEmptySourceFolders; set { if (_prefs.CleanEmptySourceFolders != value) { _prefs.CleanEmptySourceFolders = value; Saved(); } } }
+    public bool VerboseLog              { get => _prefs.VerboseLog;              set { if (_prefs.VerboseLog != value)              { _prefs.VerboseLog = value;              Saved(); } } }
 
     public bool UseNoDateFolder
     {
@@ -229,6 +248,8 @@ public sealed class MainViewModel : ViewModelBase
         {
             DateTimeOriginal = new DateTime(2024, 7, 15, 9, 5, 42),
             Make = "Canon", Model = "Canon EOS R5", LensModel = "RF24-105mm F4 L IS USM",
+            FocalLength = "50", Aperture = "4", ShutterSpeed = "0.004", ISO = "400",
+            ImageWidth = 8192, ImageHeight = 5464,
             GeolocationCity = "Shibuya", GeolocationRegion = "Tokyo", GeolocationCountry = "Japan",
             GeolocationCountryCode = "JP", Rating = 4,
         },
@@ -310,6 +331,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _currentFile = "";
     private string _elapsedText = "";
     private string _etaText = "";
+    private string _throughputText = "";
     private string _statusMessage = "";
 
     public bool IsRunning
@@ -348,6 +370,7 @@ public sealed class MainViewModel : ViewModelBase
     public string CurrentFile     { get => _currentFile;     private set => SetField(ref _currentFile, value); }
     public string ElapsedText     { get => _elapsedText;     private set => SetField(ref _elapsedText, value); }
     public string EtaText         { get => _etaText;         private set => SetField(ref _etaText, value); }
+    public string ThroughputText  { get => _throughputText;  private set => SetField(ref _throughputText, value); }
     public string StatusMessage   { get => _statusMessage;   private set => SetField(ref _statusMessage, value); }
 
     // ===================== 集計 =====================
@@ -366,11 +389,11 @@ public sealed class MainViewModel : ViewModelBase
 
     // ===================== コレクション =====================
 
-    public ObservableCollection<LogEntry> LogEntries { get; } = new();
+    public RangeObservableCollection<LogEntry> LogEntries { get; } = new();
     public ICollectionView LogView { get; }
-    public ObservableCollection<ImageAssetViewModel> Assets { get; } = new();
+    public RangeObservableCollection<ImageAssetViewModel> Assets { get; } = new();
     public ICollectionView AssetsView { get; }
-    public ObservableCollection<DuplicateGroupViewModel> DuplicateGroups { get; } = new();
+    public RangeObservableCollection<DuplicateGroupViewModel> DuplicateGroups { get; } = new();
     public StatisticsViewModel Statistics { get; } = new();
     public LibraryViewModel Library { get; }
 
@@ -480,6 +503,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand ShowInExplorerCommand { get; }
     public RelayCommand OpenFileCommand { get; }
     public RelayCommand ShowOutputInExplorerCommand { get; }
+    public RelayCommand KeepDuplicateCommand { get; }
     public RelayCommand RecycleDuplicateCommand { get; }
     public RelayCommand RecycleAllDuplicatesCommand { get; }
     public RelayCommand InsertVariableCommand { get; }
@@ -492,23 +516,25 @@ public sealed class MainViewModel : ViewModelBase
 
     private AppSettings BuildSettings() => new()
     {
-        InputDirectory         = InputDirectory,
-        OutputDirectory        = OutputDirectory,
-        TrashDirectory         = TrashDirectory,
-        FolderTemplate         = FolderTemplate,
-        FileNameTemplate       = FileNameTemplate,
-        Mode                   = OperationMode,
-        MaxDegreeOfParallelism = MaxParallelism,
-        ExifToolPath           = ExifToolPath,
-        FilterStartDate        = FilterStartDate,
-        FilterEndDate          = FilterEndDate,
-        IncludeVideos          = IncludeVideos,
-        IncludeSidecars        = IncludeSidecars,
-        VerifyCopies           = VerifyCopies,
-        DetectDuplicates       = DetectDuplicates,
-        UseMetadataCache       = UseMetadataCache,
-        NoDateFolderName       = UseNoDateFolder ? NoDateFolderName : "",
-        VerboseLog             = VerboseLog,
+        InputDirectory          = InputDirectory,
+        OutputDirectory         = OutputDirectory,
+        TrashDirectory          = TrashDirectory,
+        FolderTemplate          = FolderTemplate,
+        FileNameTemplate        = FileNameTemplate,
+        Mode                    = OperationMode,
+        MaxDegreeOfParallelism  = MaxParallelism,
+        ExifToolPath            = ExifToolPath,
+        FilterStartDate         = FilterStartDate,
+        FilterEndDate           = FilterEndDate,
+        MinRating               = MinRating,
+        IncludeVideos           = IncludeVideos,
+        IncludeSidecars         = IncludeSidecars,
+        VerifyCopies            = VerifyCopies,
+        DetectDuplicates        = DetectDuplicates,
+        UseMetadataCache        = UseMetadataCache,
+        CleanEmptySourceFolders = CleanEmptySourceFolders,
+        NoDateFolderName        = UseNoDateFolder ? NoDateFolderName : "",
+        VerboseLog              = VerboseLog,
     };
 
     private async Task StartAsync()
@@ -525,8 +551,9 @@ public sealed class MainViewModel : ViewModelBase
         {
             await CheckExifToolAsync();
             if (!IsExifToolOk && !Dialogs.Confirm(
-                    "exiftool が見つからないため、撮影日・カメラ名を読み取れません。\n" +
-                    "このまま続けると、ファイルの日時でフォルダ分けされ、カメラ名は Unknown になります。\n\n" +
+                    "exiftool が見つかりません。\n" +
+                    "JPEG や標準 RAW は内蔵の高速リーダーで撮影日・カメラ名を読み取れますが、\n" +
+                    "HEIC・CR3・動画の読み取りや GPS からの都市名変換（{city} 等）には exiftool が必要です。\n\n" +
                     $"exiftool は {ExifToolDownloadUrl} から Windows 版を入手し、次のフォルダに入れると使えます:\n{ResourcesDirectory}\n\n" +
                     "このまま続けますか？",
                     "exiftool が見つかりません", warning: true))
@@ -571,6 +598,8 @@ public sealed class MainViewModel : ViewModelBase
         CurrentFile = "";
         StatusMessage = "";
         EtaText = "";
+        ThroughputText = "";
+        _phaseProcessedBytes = 0;
         _runClock.Restart();
         _phase = RunPhase.Preparing;
         _phaseStartedAt = DateTime.Now;
@@ -601,6 +630,7 @@ public sealed class MainViewModel : ViewModelBase
             IsRunning = false;
             IsIndeterminate = false;
             EtaText = "";
+            ThroughputText = "";
             _cts.Dispose();
             _cts = null;
             OnPropertiesChanged(nameof(ProgressFraction), nameof(ProgressPercentText));
@@ -622,6 +652,11 @@ public sealed class MainViewModel : ViewModelBase
             _phase = p.Phase;
             _phaseStartedAt = DateTime.Now;
             _phaseStartDone = p.Done;
+            _phaseProcessedBytes = p.ProcessedBytes;
+        }
+        else if (p.ProcessedBytes > _phaseProcessedBytes)
+        {
+            _phaseProcessedBytes = p.ProcessedBytes;
         }
         IsIndeterminate = p.Total == 0;
         ProgressTotal = Math.Max(p.Total, 1);
@@ -638,24 +673,44 @@ public sealed class MainViewModel : ViewModelBase
 
         var doneInPhase = ProgressValue - _phaseStartDone;
         var spent = DateTime.Now - _phaseStartedAt;
-        if (!IsIndeterminate && doneInPhase > 0 && spent.TotalSeconds > 2 && ProgressValue < ProgressTotal)
+        if (!IsIndeterminate && doneInPhase > 0 && spent.TotalSeconds > 1.0)
         {
-            var remaining = TimeSpan.FromSeconds(spent.TotalSeconds / doneInPhase * (ProgressTotal - ProgressValue));
-            EtaText = $"この工程の残り 約{OrganizeUseCase.FormatElapsed(remaining)}";
+            if (_phase == RunPhase.Transferring && _phaseProcessedBytes > 0)
+            {
+                double mbPerSec = _phaseProcessedBytes / (1024.0 * 1024.0) / spent.TotalSeconds;
+                ThroughputText = mbPerSec >= 1 ? $"{mbPerSec:F1} MB/s" : $"{mbPerSec * 1024:F0} KB/s";
+            }
+            else
+            {
+                double filesPerSec = doneInPhase / spent.TotalSeconds;
+                ThroughputText = filesPerSec >= 10 ? $"{filesPerSec:N0} 枚/秒" : $"{filesPerSec:F1} 枚/秒";
+            }
+
+            if (spent.TotalSeconds > 2 && ProgressValue < ProgressTotal)
+            {
+                var remaining = TimeSpan.FromSeconds(spent.TotalSeconds / doneInPhase * (ProgressTotal - ProgressValue));
+                EtaText = $"この工程の残り 約{OrganizeUseCase.FormatElapsed(remaining)}";
+            }
+            else EtaText = "";
         }
-        else EtaText = "";
+        else
+        {
+            EtaText = "";
+            ThroughputText = "";
+        }
     }
 
     private void FlushLog()
     {
         if (_pendingLog.IsEmpty) return;
-        int added = 0;
-        while (added < 5000 && _pendingLog.TryDequeue(out var e))
+        var batch = new List<LogEntry>();
+        while (batch.Count < 5000 && _pendingLog.TryDequeue(out var e))
+            batch.Add(e);
+        if (batch.Count > 0)
         {
-            LogEntries.Add(e);
-            added++;
+            LogEntries.AddRange(batch);
+            LogAppended?.Invoke(this, EventArgs.Empty);
         }
-        if (added > 0) LogAppended?.Invoke(this, EventArgs.Empty);
     }
 
     private void ShowResult(OrganizeResult r)
@@ -670,10 +725,10 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ProcessedLabel));
         LastRunText = $"{DateTime.Now:HH:mm} の {OrganizeUseCase.ModeLabel(r.Mode)}{(r.Cancelled ? "（中断）" : "")} ・ {OrganizeUseCase.FormatElapsed(r.Elapsed)}";
 
-        foreach (var a in r.Assets) Assets.Add(new ImageAssetViewModel(a));
+        Assets.ReplaceAll(r.Assets.Select(a => new ImageAssetViewModel(a)));
         RefreshAssets();
 
-        foreach (var g in r.DuplicateGroups) DuplicateGroups.Add(new DuplicateGroupViewModel(g.GroupId, g.Files));
+        DuplicateGroups.ReplaceAll(r.DuplicateGroups.Select(g => new DuplicateGroupViewModel(g.GroupId, g.Files)));
         OnPropertyChanged(nameof(DuplicateSummary));
 
         Statistics.Update(r.Statistics);

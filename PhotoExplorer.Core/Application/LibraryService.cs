@@ -21,7 +21,7 @@ public sealed record LibraryPhoto(
     public string FileName => Path.GetFileName(CurrentPath);
 }
 
-public enum LibrarySort { NewestFirst, OldestFirst, FileName }
+public enum LibrarySort { NewestFirst, OldestFirst, FileName, RatingDesc, FileSizeDesc }
 
 /// <summary>ライブラリの絞り込み条件（null / 空は「すべて」）</summary>
 public sealed class LibraryCriteria
@@ -59,13 +59,34 @@ public sealed class LibraryService
         {
             var assets = await _repository.LoadAllAsync(cancellationToken).ConfigureAwait(false);
 
-            // ファイルがあるかどうかの確認は、NAS などでは 1 件ずつだと遅いので並列にまとめて行う
-            var candidates = assets.SelectMany(x => new[] { x.SourcePath, x.OutputPath })
-                                   .OfType<string>().Distinct(PathUtil.Comparer).ToList();
+            // フォルダ単位でまとめてファイル一覧を取得し、NAS や大量ファイル時の存在確認を高速化する
+            var byDir = assets.SelectMany(x => new[] { x.SourcePath, x.OutputPath })
+                .OfType<string>()
+                .Distinct(PathUtil.Comparer)
+                .GroupBy(p => Path.GetDirectoryName(p) ?? "", PathUtil.Comparer)
+                .ToList();
+
             var exists = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>(PathUtil.Comparer);
-            Parallel.ForEach(candidates,
+            Parallel.ForEach(byDir,
                 new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = cancellationToken },
-                path => exists[path] = File.Exists(path));
+                group =>
+                {
+                    var dir = group.Key;
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    {
+                        try
+                        {
+                            var filesInDir = new HashSet<string>(Directory.EnumerateFiles(dir), PathUtil.Comparer);
+                            foreach (var path in group)
+                                exists[path] = filesInDir.Contains(path);
+                            return;
+                        }
+                        catch (IOException) { }
+                        catch (UnauthorizedAccessException) { }
+                    }
+                    foreach (var path in group)
+                        exists[path] = File.Exists(path);
+                });
 
             return Build(assets, _normalizer, path => exists.TryGetValue(path, out var e) ? e : File.Exists(path), cancellationToken);
         }, cancellationToken);
@@ -130,6 +151,8 @@ public sealed class LibraryService
     {
         var from = c.From?.Date;
         var to = c.To?.Date.AddDays(1);
+        var term = string.IsNullOrWhiteSpace(c.Search) ? null : c.Search.Trim();
+
         var q = photos.Where(p =>
             (c.IncludeMissing || p.Exists)
             && (c.IncludeDuplicates || p.Asset.Status != AssetStatus.Duplicate)
@@ -141,14 +164,19 @@ public sealed class LibraryService
             && (to == null || p.Date < to)
             && (string.IsNullOrEmpty(c.Location)
                 || (p.Location != null && (p.Location == c.Location || p.Location.StartsWith(c.Location + " / ", StringComparison.Ordinal))))
-            && (string.IsNullOrWhiteSpace(c.Search)
-                || p.CurrentPath.Contains(c.Search.Trim(), StringComparison.OrdinalIgnoreCase)));
+            && (term == null
+                || p.CurrentPath.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || p.Camera.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || p.Lens.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || (p.Location?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)));
 
         q = c.Sort switch
         {
-            LibrarySort.OldestFirst => q.OrderBy(p => p.Date).ThenBy(p => p.FileName, StringComparer.OrdinalIgnoreCase),
-            LibrarySort.FileName    => q.OrderBy(p => p.FileName, StringComparer.OrdinalIgnoreCase).ThenBy(p => p.Date),
-            _                       => q.OrderByDescending(p => p.Date).ThenBy(p => p.FileName, StringComparer.OrdinalIgnoreCase),
+            LibrarySort.OldestFirst  => q.OrderBy(p => p.Date).ThenBy(p => p.FileName, StringComparer.OrdinalIgnoreCase),
+            LibrarySort.FileName     => q.OrderBy(p => p.FileName, StringComparer.OrdinalIgnoreCase).ThenBy(p => p.Date),
+            LibrarySort.RatingDesc   => q.OrderByDescending(p => p.Rating).ThenByDescending(p => p.Date),
+            LibrarySort.FileSizeDesc => q.OrderByDescending(p => p.Asset.FileSize).ThenByDescending(p => p.Date),
+            _                        => q.OrderByDescending(p => p.Date).ThenBy(p => p.FileName, StringComparer.OrdinalIgnoreCase),
         };
         return q.ToList();
     }
