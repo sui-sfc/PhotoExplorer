@@ -115,7 +115,18 @@ public static class ThumbnailLoader
             if (embedded != null)
             {
                 using var ms = new MemoryStream(embedded.JpegBytes, writable: false);
-                var fromRaw = DecodeStream(ms, decodeWidth, embedded.Orientation);
+                int rawOrientation = embedded.Orientation;
+                if (rawOrientation == 1)
+                {
+                    // CR3 などは内蔵リーダーで向きを読めないので、元ファイルの WIC メタデータで確認する
+                    try
+                    {
+                        using var original = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                        rawOrientation = ReadWicOrientation(original);
+                    }
+                    catch { rawOrientation = 1; }
+                }
+                var fromRaw = DecodeStream(ms, decodeWidth, rawOrientation);
                 if (fromRaw != null) return fromRaw;
             }
         }
@@ -130,9 +141,9 @@ public static class ThumbnailLoader
             int orientation = applyOrientation ? FastExifReader.ReadOrientation(stream) : 1;
             if (applyOrientation && orientation == 1)
             {
-                // HEIC 等、FastExifReader 未対応フォーマットのみ WIC メタデータにフォールバック
+                // JPEG 以外（HEIC・CR3 など内蔵リーダーで向きを読めない形式）は WIC メタデータで確認する
                 var kind = MediaFormats.GetKind(path);
-                if (kind == MediaKind.Heif)
+                if (kind != MediaKind.Jpeg)
                 {
                     stream.Position = 0;
                     orientation = ReadWicOrientation(stream);

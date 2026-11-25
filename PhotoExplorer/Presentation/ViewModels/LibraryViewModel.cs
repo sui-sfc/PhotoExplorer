@@ -310,7 +310,7 @@ public sealed class LibraryViewModel : ViewModelBase
     private int IndexOfSelected()
     {
         for (int i = 0; i < _filtered.Count; i++)
-            if (ReferenceEquals(_filtered[i], _selected)) return i;
+            if (_selected != null && string.Equals(_filtered[i].Path, _selected.Path, StringComparison.OrdinalIgnoreCase)) return i;
         return -1;
     }
 

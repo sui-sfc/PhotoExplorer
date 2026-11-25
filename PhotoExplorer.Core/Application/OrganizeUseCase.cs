@@ -327,10 +327,14 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
                 var fast = fastResults[i];
                 if (fast != null)
                 {
-                    if (!exifToolAvailable || !fast.NeedsExifTool)
+                    // 撮影日が取れなかったもの（XMP にだけ日付がある等）も exiftool に読ませる
+                    bool wantsExifTool = fast.NeedsExifTool || fast.Data.EffectiveDate == null;
+                    if (!exifToolAvailable || !wantsExifTool)
                     {
                         a.Exif = fast.Data.IsEmpty ? null : fast.Data;
-                        a.MetadataExtracted = true;
+                        // exiftool が無いために読めなかった情報（地名など）があるものは、完全な結果として記録しない。
+                        // 後で exiftool を入れたときに読み直せるようにする。
+                        a.MetadataExtracted = !wantsExifTool;
                         fastHits++;
                     }
                     else
@@ -368,18 +372,20 @@ public sealed class OrganizeUseCase : IOrganizeUseCase
             int failures = 0;
             foreach (var a in exifToolNeeds)
             {
-                if (!results.TryGetValue(a.SourcePath, out var r)) continue;
-                if (r.Data != null)
+                results.TryGetValue(a.SourcePath, out var r);
+                if (r?.Data != null)
                 {
                     a.Exif = r.Data;
                     a.MetadataExtracted = true;
                 }
                 else if (fastFallbacks.TryGetValue(a.SourcePath, out var fallback))
                 {
+                    // exiftool で読めなかった（結果なし・失敗）ときは内蔵リーダーの結果を使う。
+                    // 完全な結果ではないので記録はせず、次回もう一度 exiftool に読ませる。
                     a.Exif = fallback.IsEmpty ? null : fallback;
-                    a.MetadataExtracted = true;
+                    a.MetadataExtracted = false;
                 }
-                else if (r.Error != null)
+                else if (r?.Error != null)
                 {
                     failures++;
                     a.ErrorMessage = $"メタデータ読み取り失敗: {r.Error}";

@@ -41,6 +41,7 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
         ("NormalizedCamera", "TEXT"), ("NormalizedLens", "TEXT"), ("OutputPath", "TEXT"),
         ("Status", "TEXT NOT NULL DEFAULT 'Scanned'"), ("ErrorMessage", "TEXT"), ("ProcessedAt", "TEXT"),
         ("DuplicateGroupId", "TEXT"), ("IsKeptInDuplicateGroup", "INTEGER NOT NULL DEFAULT 1"),
+        ("Orientation", "INTEGER"),
     ];
 
     private static readonly bool CaseInsensitivePaths = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
@@ -127,6 +128,7 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
                 p[32].Value = Db(a.ProcessedAt);
                 p[33].Value = Db(a.DuplicateGroupId);
                 p[34].Value = a.IsKeptInDuplicateGroup ? 1 : 0;
+                p[35].Value = Db(e?.Orientation);
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
             tx.Commit();
@@ -234,6 +236,7 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
         public readonly int GeolocationRegion      = r.GetOrdinal("GeolocationRegion");
         public readonly int GeolocationCountry     = r.GetOrdinal("GeolocationCountry");
         public readonly int GeolocationCountryCode = r.GetOrdinal("GeolocationCountryCode");
+        public readonly int Orientation            = r.GetOrdinal("Orientation");
     }
 
     private static string? Str(SqliteDataReader r, int ord) => r.IsDBNull(ord) ? null : r.GetString(ord);
@@ -285,6 +288,7 @@ public sealed class SqliteAssetRepository : IAssetRepository, IDisposable
             GeolocationRegion      = Str(r, o.GeolocationRegion),
             GeolocationCountry     = Str(r, o.GeolocationCountry),
             GeolocationCountryCode = Str(r, o.GeolocationCountryCode),
+            Orientation            = Int(r, o.Orientation),
         };
         asset.Exif = exif.IsEmpty ? null : exif;
         return asset;

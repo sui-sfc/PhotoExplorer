@@ -26,7 +26,7 @@ public sealed class DuplicateGroupViewModel
     /// <summary>グループ内で「残す」ファイルを切り替える</summary>
     public void SetKept(DuplicateFileViewModel chosen)
     {
-        if (chosen.IsRemoved || chosen.IsKept) return;
+        if (!chosen.CanSetKept) return;
         foreach (var f in Files)
             f.SetKeptState(ReferenceEquals(f, chosen));
     }
@@ -75,7 +75,11 @@ public sealed class DuplicateFileViewModel : ViewModelBase
     }
 
     public bool CanRecycle => !IsKept && !IsRemoved;
-    public bool CanSetKept => !IsKept && !IsRemoved;
+    /// <summary>
+    /// 「これを残す」はグループのファイルがまだ元の場所にあるとき（コピー・移動・退避の前）だけ使える。
+    /// 移動や退避の後に切り替えると、整理済みの写真の方をごみ箱へ送れてしまうため。
+    /// </summary>
+    public bool CanSetKept => !IsKept && !IsRemoved && Group.Files.All(f => !f.IsRemoved && File.Exists(f.Asset.SourcePath));
 
     internal void SetKeptState(bool kept)
     {

@@ -185,9 +185,9 @@ public static partial class FastExifReader
 
         if (sofWidth > 0 && sofHeight > 0)
         {
-            // JPEG の SOF は実ピクセル寸法として最も確実
-            builder.ImageWidth ??= sofWidth;
-            builder.ImageHeight ??= sofHeight;
+            // JPEG の SOF は実ピクセル寸法として最も確実（EXIF の値はトリミング後に古いままのことがある）
+            builder.ImageWidth = sofWidth;
+            builder.ImageHeight = sofHeight;
         }
 
         if (!validJpeg && builder.IsEmpty) return null;
@@ -664,9 +664,11 @@ public static partial class FastExifReader
                 Aperture = Aperture,
                 ShutterSpeed = ShutterSpeed,
                 ISO = ISO,
-                ImageWidth = ImageWidth ?? TiffWidth,
-                ImageHeight = ImageHeight ?? TiffHeight,
+                // TIFF 系 RAW の IFD0 の寸法はサムネイルのことが多いので使わない（ExifImageWidth/Height のみ）
+                ImageWidth = ImageWidth,
+                ImageHeight = ImageHeight,
                 Rating = Rating,
+                Orientation = Orientation is >= 1 and <= 8 ? Orientation : null,
                 GPSLatitude = lat,
                 GPSLongitude = lon,
                 UsedDateField = usedField,

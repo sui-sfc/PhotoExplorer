@@ -81,7 +81,11 @@ public sealed class FileScanner : IFileScanner
                         {
                             if (Volatile.Read(ref activeWorkers) == 0 && pending.IsEmpty)
                                 break;
-                            signal.Wait(10, cancellationToken);
+                            // 一度 Set されたままだと Wait がすぐ戻って空回りするので、待つ前に戻す。
+                            // Reset と Set が行き違っても、50ms で起きて確認し直す。
+                            signal.Reset();
+                            if (!pending.IsEmpty || Volatile.Read(ref activeWorkers) == 0) continue;
+                            signal.Wait(50, cancellationToken);
                             continue;
                         }
 

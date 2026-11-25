@@ -290,11 +290,39 @@ public static class EmbeddedPreviewExtractor
         // 先頭 2 バイトが JPEG マジック (FF D8) か確認する
         Span<byte> head = stackalloc byte[2];
         stream.Position = offset;
-        if (ReadExact(stream, head) == 2 && head[0] == 0xFF && head[1] == 0xD8)
+        if (ReadExact(stream, head) == 2 && head[0] == 0xFF && head[1] == 0xD8
+            && IsDisplayableJpeg(stream, offset, length))
         {
             bestOffset = offset;
             bestLength = length;
         }
+    }
+
+    /// <summary>
+    /// 表示できる JPEG（ベースライン SOF0 / 拡張 SOF1 / プログレッシブ SOF2）か。
+    /// CR2 などの RAW 本体はロスレス JPEG（SOF3）で FF D8 から始まるため、プレビューと間違えないよう除外する。
+    /// </summary>
+    internal static bool IsDisplayableJpeg(Stream stream, long offset, long length)
+    {
+        const int ScanLimit = 256 * 1024;
+        long pos = offset + 2;
+        long end = Math.Min(offset + length, offset + ScanLimit);
+        Span<byte> hdr = stackalloc byte[4];
+        while (pos + 4 <= end)
+        {
+            stream.Position = pos;
+            if (ReadExact(stream, hdr) != 4 || hdr[0] != 0xFF) return false;
+            byte marker = hdr[1];
+            if (marker == 0xFF) { pos++; continue; }                         // 詰め物
+            if (marker is 0xD8 or 0x01 or (>= 0xD0 and <= 0xD7)) { pos += 2; continue; }
+            if (marker is 0xC0 or 0xC1 or 0xC2) return true;
+            if (marker is (>= 0xC3 and <= 0xCF) and not 0xC4 and not 0xC8 and not 0xCC) return false; // SOF3 など
+            if (marker is 0xDA or 0xD9) return false;                       // SOF より先に画像データ
+            int segLen = (hdr[2] << 8) | hdr[3];
+            if (segLen < 2) return false;
+            pos += 2 + segLen;
+        }
+        return false;
     }
 
     private static byte[]? ReadJpegSlice(Stream stream, long offset, long length)
